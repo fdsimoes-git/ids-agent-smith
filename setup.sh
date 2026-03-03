@@ -4,6 +4,7 @@ set -euo pipefail
 # IDS Agent Setup Script for Ubuntu 24 on GCP
 # Run as root or with sudo
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="/opt/ids-agent"
 LOG_DIR="/var/log/ids-agent"
 USER="ids-agent"
@@ -34,7 +35,7 @@ chmod 750 /var/lib/ids-agent
 # 4. Copy application files
 echo "[+] Installing to $APP_DIR"
 mkdir -p "$APP_DIR"
-cp -r package.json config.js src/ "$APP_DIR/"
+cp -r "$SCRIPT_DIR/package.json" "$SCRIPT_DIR/config.js" "$SCRIPT_DIR/src/" "$APP_DIR/"
 chown -R "$USER:$GROUP" "$APP_DIR"
 
 # 5. Install Node.js dependencies
@@ -81,7 +82,7 @@ visudo -c -f /etc/sudoers.d/ids-agent
 
 # 9. Install systemd service
 echo "[+] Installing systemd service"
-cp ids-agent.service /etc/systemd/system/ids-agent.service
+cp "$SCRIPT_DIR/ids-agent.service" /etc/systemd/system/ids-agent.service
 
 echo ""
 echo "=== Setup Complete ==="

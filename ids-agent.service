@@ -27,7 +27,7 @@ Environment="IDS_PORT=3001"
 # Security hardening
 NoNewPrivileges=false
 ProtectSystem=strict
-ReadWritePaths=/var/log/ids-agent
+ReadWritePaths=/var/log/ids-agent /var/lib/ids-agent
 ReadOnlyPaths=/var/log/nginx /var/log/auth.log /var/log/ufw.log /var/log/fail2ban.log
 
 # Logging
