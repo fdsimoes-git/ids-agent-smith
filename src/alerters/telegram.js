@@ -27,9 +27,9 @@ export async function sendAlert(threat) {
   }
   if (threat.httpMethod && threat.statusCode) {
     const label = threat.statusLabel ? ` (${escapeHtml(threat.statusLabel)})` : '';
-    lines.push(`<b>Request:</b> ${threat.httpMethod} → ${threat.statusCode}${label}`);
+    lines.push(`<b>Request:</b> ${escapeHtml(threat.httpMethod)} → ${escapeHtml(String(threat.statusCode))}${label}`);
   } else if (threat.httpMethod) {
-    lines.push(`<b>Request:</b> ${threat.httpMethod}`);
+    lines.push(`<b>Request:</b> ${escapeHtml(threat.httpMethod)}`);
   }
   if (threat.authMethod) {
     lines.push(`<b>Auth Method:</b> ${escapeHtml(threat.authMethod)}`);
