@@ -23,50 +23,55 @@ const detectors = [
 
 const MAX_UA_LENGTH = 120;
 
-function enrichThreat(threat, event) {
+function buildEnrichment(event) {
   switch (event.source) {
     case 'nginx': {
-      threat.protocol = 'HTTP';
-      if (event.method) threat.httpMethod = event.method;
+      const enrichment = { protocol: 'HTTP' };
+      if (event.method) enrichment.httpMethod = event.method;
       if (event.status) {
-        threat.statusCode = event.status;
+        enrichment.statusCode = event.status;
         const label = describeStatus(event.status);
-        if (label) threat.statusLabel = label;
+        if (label) enrichment.statusLabel = label;
       }
       if (event.userAgent) {
-        threat.userAgent = event.userAgent.length > MAX_UA_LENGTH
+        enrichment.userAgent = event.userAgent.length > MAX_UA_LENGTH
           ? event.userAgent.slice(0, MAX_UA_LENGTH) + '…'
           : event.userAgent;
         const origin = identifyOrigin(event.userAgent);
-        if (origin) threat.origin = origin;
+        if (origin) enrichment.origin = origin;
       }
-      break;
+      return enrichment;
     }
     case 'auth': {
-      threat.protocol = 'SSH';
-      if (event.method) threat.authMethod = event.method;
-      break;
+      const enrichment = { protocol: 'SSH' };
+      if (event.method) enrichment.authMethod = event.method;
+      return enrichment;
     }
     case 'ufw': {
-      threat.protocol = event.proto ? `Firewall/${event.proto.toUpperCase()}` : 'Firewall';
-      if (event.dpt) threat.destPort = event.dpt;
-      break;
+      const enrichment = {
+        protocol: event.proto ? `Firewall/${event.proto.toUpperCase()}` : 'Firewall',
+      };
+      if (event.dpt) enrichment.destPort = event.dpt;
+      return enrichment;
     }
     case 'fail2ban': {
-      threat.protocol = 'Fail2ban';
-      if (event.jail) threat.jail = event.jail;
-      break;
+      const enrichment = { protocol: 'Fail2ban' };
+      if (event.jail) enrichment.jail = event.jail;
+      return enrichment;
     }
+    default:
+      return null;
   }
 }
 
 export function runDetectors(event, store) {
   const threats = [];
+  const enrichment = buildEnrichment(event);
   for (const check of detectors) {
     try {
       const threat = check(event, store);
       if (threat) {
-        enrichThreat(threat, event);
+        if (enrichment) Object.assign(threat, enrichment);
         threats.push(threat);
       }
     } catch {

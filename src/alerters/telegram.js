@@ -35,7 +35,7 @@ export async function sendAlert(threat) {
     lines.push(`<b>Auth Method:</b> ${escapeHtml(threat.authMethod)}`);
   }
   if (threat.destPort) {
-    lines.push(`<b>Dest Port:</b> ${threat.destPort}`);
+    lines.push(`<b>Dest Port:</b> <code>${escapeHtml(String(threat.destPort))}</code>`);
   }
   if (threat.jail) {
     lines.push(`<b>Jail:</b> ${escapeHtml(threat.jail)}`);
