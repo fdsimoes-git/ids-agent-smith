@@ -18,7 +18,7 @@ export function checkPortScan(event, store) {
       severity: 'HIGH',
       ip: event.ip,
       timestamp: new Date().toISOString(),
-      endpoint: `${uniquePaths.size} different endpoints`,
+      endpoint: `${uniquePaths.size} unique 404 paths`,
       details: `${uniquePaths.size} unique 404 paths probed in ${windowSec}s`,
       suggestedAction: 'Block IP — likely reconnaissance/scanning',
       count: uniquePaths.size,

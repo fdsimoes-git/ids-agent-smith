@@ -53,12 +53,19 @@ export async function blockIp(ip) {
     results.push(`fail2ban: ${err.message}`);
   }
 
+  const cmd = ip.includes(':') ? 'ip6tables' : 'iptables';
   try {
-    await exec('sudo', ['iptables', '-I', 'INPUT', '-s', ip, '-j', 'DROP']);
-    results.push('iptables: DROP rule added');
-    logger.info(`iptables DROP rule added: ${ip}`);
-  } catch (err) {
-    results.push(`iptables: ${err.message}`);
+    await exec('sudo', [cmd, '-w', '-C', 'INPUT', '-s', ip, '-j', 'DROP']);
+    results.push(`${cmd}: DROP rule already exists`);
+    logger.info(`${cmd} DROP rule already exists: ${ip}`);
+  } catch {
+    try {
+      await exec('sudo', [cmd, '-w', '-I', 'INPUT', '-s', ip, '-j', 'DROP']);
+      results.push(`${cmd}: DROP rule added`);
+      logger.info(`${cmd} DROP rule added: ${ip}`);
+    } catch (err) {
+      results.push(`${cmd}: ${err.message}`);
+    }
   }
 
   return results;

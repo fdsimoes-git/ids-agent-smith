@@ -69,7 +69,10 @@ echo "[+] Configuring sudoers for IDS actions"
 cat > /etc/sudoers.d/ids-agent << 'SUDOERS'
 # IDS Agent — allow blocking IPs without password
 ids-agent ALL=(ALL) NOPASSWD: /usr/bin/fail2ban-client set * banip *
-ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/iptables -I INPUT -s * -j DROP
+ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/iptables -w -C INPUT -s * -j DROP
+ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/iptables -w -I INPUT -s * -j DROP
+ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -w -C INPUT -s * -j DROP
+ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -w -I INPUT -s * -j DROP
 ids-agent ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload nginx
 SUDOERS
 chmod 440 /etc/sudoers.d/ids-agent
