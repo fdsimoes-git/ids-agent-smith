@@ -24,13 +24,17 @@ Analyze each threat and provide:
 
 Consider the threat history to detect coordinated campaigns or recurring attackers.
 
+IMPORTANT: The "explanation" field will be displayed in a Telegram message using HTML parse mode.
+You may use these HTML tags for formatting: <b>bold</b>, <i>italic</i>, <code>inline code</code>, <pre>code block</pre>.
+Do NOT use markdown. Do NOT use characters &, < or > unescaped outside of tags.
+
 Respond ONLY with valid JSON:
 {
   "isRealThreat": boolean,
   "attackType": "string",
   "confidence": number,
   "action": "block" | "monitor" | "ignore" | "escalate",
-  "explanation": "string"
+  "explanation": "string (Telegram HTML formatted)"
 }`;
 
 export async function analyzeThreat(threat, recentHistory) {
@@ -91,7 +95,7 @@ export async function generateWeeklyReport(weekHistory) {
     const response = await client.messages.create({
       model: config.anthropic.model,
       max_tokens: config.anthropic.maxTokens,
-      system: 'You are a cybersecurity analyst generating a concise weekly threat report. Use plain text suitable for a Telegram message (no markdown headers, use simple formatting).',
+      system: 'You are a cybersecurity analyst generating a concise weekly threat report. Format using Telegram HTML tags: <b>bold</b>, <i>italic</i>, <code>code</code>, <pre>block</pre>. Do NOT use markdown. Do NOT use unescaped &, < or > outside of tags.',
       messages: [{
         role: 'user',
         content: `Weekly IDS report from ${weekHistory.length} events over the last 7 days:\n\n${JSON.stringify(weekHistory.slice(-200), null, 2)}\n\nCover: attack trends, top offenders, pattern analysis, and infrastructure recommendations.`,
@@ -115,7 +119,7 @@ export async function generateIpReport(ip, history) {
     const response = await client.messages.create({
       model: config.anthropic.model,
       max_tokens: config.anthropic.maxTokens,
-      system: 'You are a cybersecurity analyst. Provide a deep-dive report on this IP. Use plain text suitable for Telegram (no markdown headers).',
+      system: 'You are a cybersecurity analyst. Provide a deep-dive report on this IP. Format using Telegram HTML tags: <b>bold</b>, <i>italic</i>, <code>code</code>, <pre>block</pre>. Do NOT use markdown. Do NOT use unescaped &, < or > outside of tags.',
       messages: [{
         role: 'user',
         content: `Deep-dive on IP ${ip} (${ipEvents.length} events):\n\n${JSON.stringify(ipEvents.slice(-50), null, 2)}\n\nAnalyze: attack patterns, timing, risk level, recommended actions.`,

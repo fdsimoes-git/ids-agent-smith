@@ -92,7 +92,7 @@ async function handleMessage(msg, store, memory) {
         await sendMessage(`\u{1F50D} Generating AI report for <code>${ip}</code>...`);
         const history = memory.getLastWeek();
         const report = await generateIpReport(ip, history);
-        await sendMessage(`\u{1F4CB} <b>IP Report: ${ip}</b>\n\n${escapeHtml(report)}`);
+        await sendMessage(`\u{1F4CB} <b>IP Report: ${ip}</b>\n\n${report}`);
         break;
       }
 

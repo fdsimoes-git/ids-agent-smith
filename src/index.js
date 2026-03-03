@@ -86,7 +86,7 @@ function scheduleWeeklyReport() {
         if (report) {
           await sendMessage(
             `\u{1F4CB} <b>Weekly AI Threat Report</b>\n\n` +
-            report.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            report
           );
         }
       } catch (err) {

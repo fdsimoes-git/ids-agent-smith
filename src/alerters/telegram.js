@@ -44,7 +44,7 @@ export async function sendAIAnalysis(threat, analysis) {
     `<b>Recommended Action:</b> <code>${analysis.action}</code>`,
     ``,
     `<b>Explanation:</b>`,
-    escapeHtml(analysis.explanation),
+    analysis.explanation,
   ].join('\n');
 
   await sendMessage(text);
