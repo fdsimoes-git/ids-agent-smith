@@ -109,12 +109,22 @@ export class JournalTailer {
   }
 
   start() {
-    this.proc = spawn('journalctl', [
-      '-f', '-u', this.serviceName,
-      '--output=short-iso',
-      '--no-pager',
-      '-n', '0', // don't replay old entries
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    try {
+      this.proc = spawn('journalctl', [
+        '-f', '-u', this.serviceName,
+        '--output=short-iso',
+        '--no-pager',
+        '-n', '0', // don't replay old entries
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (err) {
+      logger.warn(`journalctl not available: ${err.message}`);
+      return;
+    }
+
+    this.proc.on('error', (err) => {
+      logger.warn(`journalctl spawn error: ${err.message} — journal tailing disabled`);
+      this.stopped = true;
+    });
 
     let buffer = '';
     this.proc.stdout.on('data', (chunk) => {
