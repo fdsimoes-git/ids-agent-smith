@@ -24,7 +24,10 @@ export async function sendAlert(threat) {
     `<b>Details:</b> ${escapeHtml(threat.details)}`,
     `<b>Suggested:</b> ${escapeHtml(threat.suggestedAction)}`,
     ``,
-    `<i>/block_ip ${threat.ip} | /whitelist ${threat.ip} | /report ${threat.ip}</i>`,
+    `<b>Actions:</b>`,
+    `<code>/block_ip ${threat.ip}</code>`,
+    `<code>/whitelist ${threat.ip}</code>`,
+    `<code>/report ${threat.ip}</code>`,
   ].join('\n');
 
   await sendMessage(text);
