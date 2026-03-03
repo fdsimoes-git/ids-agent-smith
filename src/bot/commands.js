@@ -150,7 +150,7 @@ async function handleMessage(msg, store, memory) {
       case '/help':
         await sendMessage(
           `\u{1F6E1}\uFE0F <b>IDS Agent Commands</b>\n\n` +
-          `/block_ip &lt;IP&gt; \u2014 Block IP via fail2ban + UFW\n` +
+          `/block_ip &lt;IP&gt; \u2014 Block IP via fail2ban + iptables\n` +
           `/whitelist &lt;IP&gt; \u2014 Suppress alerts for IP\n` +
           `/report &lt;IP&gt; \u2014 AI deep-dive on IP activity\n` +
           `/blocked \u2014 List currently blocked IPs\n` +

@@ -33,7 +33,7 @@ const config = {
 
   thresholds: {
     bruteForce: { count: 5, windowSec: 60 },
-    portScan: { count: 10, windowSec: 30 },
+    portScan: { count: 10, windowSec: 60 },
     httpFlood: { count: 100, windowSec: 60 },
     error4xx: { count: 30, windowSec: 60 },
     error5xx: { count: 3, windowSec: 60 },

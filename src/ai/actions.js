@@ -54,11 +54,11 @@ export async function blockIp(ip) {
   }
 
   try {
-    await exec('sudo', ['ufw', 'deny', 'from', ip]);
-    results.push('ufw: deny rule added');
-    logger.info(`UFW deny rule added: ${ip}`);
+    await exec('sudo', ['iptables', '-I', 'INPUT', '-s', ip, '-j', 'DROP']);
+    results.push('iptables: DROP rule added');
+    logger.info(`iptables DROP rule added: ${ip}`);
   } catch (err) {
-    results.push(`ufw: ${err.message}`);
+    results.push(`iptables: ${err.message}`);
   }
 
   return results;

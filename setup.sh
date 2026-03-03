@@ -60,21 +60,16 @@ if [ -f /var/log/fail2ban.log ]; then
   setfacl -m u:"$USER":r /var/log/fail2ban.log 2>/dev/null || chmod o+r /var/log/fail2ban.log
 fi
 
-# Ensure UFW log access
-if [ -f /var/log/ufw.log ]; then
-  setfacl -m u:"$USER":r /var/log/ufw.log 2>/dev/null || chmod o+r /var/log/ufw.log
-fi
-
 # 7. Grant journal read access
 echo "[+] Granting systemd journal access"
 usermod -aG systemd-journal "$USER" 2>/dev/null || true
 
-# 8. Configure sudoers for autonomous actions (fail2ban + ufw)
+# 8. Configure sudoers for autonomous actions (fail2ban + iptables)
 echo "[+] Configuring sudoers for IDS actions"
 cat > /etc/sudoers.d/ids-agent << 'SUDOERS'
 # IDS Agent — allow blocking IPs without password
 ids-agent ALL=(ALL) NOPASSWD: /usr/bin/fail2ban-client set * banip *
-ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/ufw deny from *
+ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/iptables -I INPUT -s * -j DROP
 ids-agent ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload nginx
 SUDOERS
 chmod 440 /etc/sudoers.d/ids-agent
