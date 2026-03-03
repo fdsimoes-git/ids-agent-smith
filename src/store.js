@@ -47,6 +47,10 @@ class Store {
     this.bannedIps.delete(ip);
   }
 
+  getBannedIps() {
+    return [...this.bannedIps.entries()].map(([ip, info]) => ({ ip, ...info }));
+  }
+
   wasBanned(ip) {
     return this.bannedIps.has(ip);
   }
