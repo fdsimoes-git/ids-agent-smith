@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import config from '../../config.js';
 import logger, { appendToFile } from '../utils/logger.js';
 import store from '../store.js';
+import { sanitizeIp } from '../utils/sanitize.js';
 
 const exec = promisify(execFile);
 
@@ -89,8 +90,9 @@ export async function syncBannedIps() {
     const { stdout } = await exec('sudo', ['fail2ban-client', 'status', 'sshd']);
     const match = stdout.match(/Banned IP list:\s+(.+)/);
     if (match) {
-      for (const ip of match[1].trim().split(/\s+/)) {
-        if (ip) { store.markBanned(ip, 'sshd'); count++; }
+      for (const raw of match[1].trim().split(/\s+/)) {
+        const ip = sanitizeIp(raw);
+        if (ip && !store.wasBanned(ip)) { store.markBanned(ip, 'sshd'); count++; }
       }
     }
   } catch (err) {
@@ -102,10 +104,14 @@ export async function syncBannedIps() {
     try {
       const { stdout } = await exec('sudo', [cmd, '-w', '-S', 'INPUT']);
       for (const line of stdout.split('\n')) {
-        const match = line.match(/^-A INPUT -s (\S+?)(?:\/\d+)? -j DROP$/);
+        const match = line.match(/^-A INPUT -s (\S+?)(?:\/(\d+))? -j DROP$/);
         if (match) {
-          const ip = match[1];
-          if (!store.wasBanned(ip)) { store.markBanned(ip, cmd); count++; }
+          const cidr = match[2];
+          const isHostRule = !cidr
+            || (cmd === 'iptables' && cidr === '32')
+            || (cmd === 'ip6tables' && cidr === '128');
+          const ip = isHostRule ? sanitizeIp(match[1]) : null;
+          if (ip && !store.wasBanned(ip)) { store.markBanned(ip, cmd); count++; }
         }
       }
     } catch (err) {
