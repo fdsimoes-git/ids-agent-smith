@@ -13,7 +13,7 @@ import { runDetectors } from './detectors/index.js';
 import { sendAlert, sendAIAnalysis, sendActionTaken, sendMessage } from './alerters/telegram.js';
 import { scheduleDailySummary, stopDailySummary } from './alerters/daily-summary.js';
 import { analyzeThreat, generateWeeklyReport } from './ai/analyzer.js';
-import { executeAction } from './ai/actions.js';
+import { executeAction, syncBannedIps } from './ai/actions.js';
 import { startApiServer, stopApiServer } from './api/server.js';
 import { startBot, stopBot } from './bot/commands.js';
 
@@ -135,6 +135,7 @@ async function main() {
 
   await memory.load();
   store.startCleanup();
+  await syncBannedIps();
 
   // File tailers
   const nginxTailer = new LogTailer(config.logs.nginx, line => processLine('nginx', parseNginxLine, line));

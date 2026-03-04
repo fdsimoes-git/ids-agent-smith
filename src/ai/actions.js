@@ -2,6 +2,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import config from '../../config.js';
 import logger, { appendToFile } from '../utils/logger.js';
+import store from '../store.js';
+import { sanitizeIp } from '../utils/sanitize.js';
 
 const exec = promisify(execFile);
 
@@ -45,30 +47,80 @@ export async function blockIp(ip) {
   logger.info(`Blocking IP: ${ip}`);
   const results = [];
 
+  let f2bBanned = false;
   try {
     await exec('sudo', ['fail2ban-client', 'set', 'sshd', 'banip', ip]);
     results.push('fail2ban: banned');
     logger.info(`fail2ban ban applied: ${ip}`);
+    f2bBanned = true;
   } catch (err) {
     results.push(`fail2ban: ${err.message}`);
   }
 
   const cmd = ip.includes(':') ? 'ip6tables' : 'iptables';
+  let iptablesBlocked = false;
   try {
     await exec('sudo', [cmd, '-w', '-C', 'INPUT', '-s', ip, '-j', 'DROP']);
     results.push(`${cmd}: DROP rule already exists`);
     logger.info(`${cmd} DROP rule already exists: ${ip}`);
+    iptablesBlocked = true;
   } catch {
     try {
       await exec('sudo', [cmd, '-w', '-I', 'INPUT', '-s', ip, '-j', 'DROP']);
       results.push(`${cmd}: DROP rule added`);
       logger.info(`${cmd} DROP rule added: ${ip}`);
+      iptablesBlocked = true;
     } catch (err) {
       results.push(`${cmd}: ${err.message}`);
     }
   }
 
+  if (f2bBanned || iptablesBlocked) {
+    store.markBanned(ip, f2bBanned ? 'sshd' : cmd);
+  }
+
   return results;
+}
+
+export async function syncBannedIps() {
+  let count = 0;
+
+  // Sync from fail2ban
+  try {
+    const { stdout } = await exec('sudo', ['fail2ban-client', 'status', 'sshd']);
+    const match = stdout.match(/Banned IP list:\s+(.+)/);
+    if (match) {
+      for (const raw of match[1].trim().split(/\s+/)) {
+        const ip = sanitizeIp(raw);
+        if (ip && !store.wasBanned(ip)) { store.markBanned(ip, 'sshd'); count++; }
+      }
+    }
+  } catch (err) {
+    logger.warn(`Failed to sync fail2ban bans: ${err.message}`);
+  }
+
+  // Sync from iptables / ip6tables
+  for (const cmd of ['iptables', 'ip6tables']) {
+    try {
+      const { stdout } = await exec('sudo', [cmd, '-w', '-S', 'INPUT']);
+      for (const line of stdout.split('\n')) {
+        const match = line.match(/^-A INPUT -s (\S+?)(?:\/(\d+))? -j DROP$/);
+        if (match) {
+          const cidr = match[2];
+          const isHostRule = !cidr
+            || (cmd === 'iptables' && cidr === '32')
+            || (cmd === 'ip6tables' && cidr === '128');
+          const ip = isHostRule ? sanitizeIp(match[1]) : null;
+          if (ip && !store.wasBanned(ip)) { store.markBanned(ip, cmd); count++; }
+        }
+      }
+    } catch (err) {
+      logger.warn(`Failed to sync ${cmd} bans: ${err.message}`);
+    }
+  }
+
+  if (count > 0) logger.info(`Synced ${count} banned IPs from fail2ban + iptables`);
+  return count;
 }
 
 export async function reloadNginx() {
