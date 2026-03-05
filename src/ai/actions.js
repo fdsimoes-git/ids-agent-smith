@@ -4,6 +4,7 @@ import config from '../../config.js';
 import logger, { appendToFile } from '../utils/logger.js';
 import store from '../store.js';
 import { sanitizeIp } from '../utils/sanitize.js';
+import { addToDenyList, removeFromDenyList, rebuildDenyList } from '../utils/nginx-deny-list.js';
 
 const exec = promisify(execFile);
 
@@ -75,10 +76,63 @@ export async function blockIp(ip) {
     }
   }
 
-  if (f2bBanned || iptablesBlocked) {
-    store.markBanned(ip, f2bBanned ? 'sshd' : cmd);
+  // Add to nginx deny list to block HTTP/HTTPS access
+  let nginxBlocked = false;
+  try {
+    const added = await addToDenyList(ip);
+    if (added) {
+      await reloadNginx();
+      results.push('nginx: deny rule added + reloaded');
+    } else {
+      results.push('nginx: deny rule already exists');
+    }
+    nginxBlocked = true;
+  } catch (err) {
+    results.push(`nginx deny list: ${err.message}`);
   }
 
+  if (f2bBanned || iptablesBlocked || nginxBlocked) {
+    store.markBanned(ip, 'all');
+  }
+
+  return results;
+}
+
+export async function unblockIp(ip) {
+  logger.info(`Unblocking IP: ${ip}`);
+  const results = [];
+
+  // Remove from fail2ban
+  try {
+    await exec('sudo', ['fail2ban-client', 'set', 'sshd', 'unbanip', ip]);
+    results.push('fail2ban: unbanned');
+  } catch (err) {
+    results.push(`fail2ban: ${err.message}`);
+  }
+
+  // Remove iptables/ip6tables DROP rule
+  const cmd = ip.includes(':') ? 'ip6tables' : 'iptables';
+  try {
+    await exec('sudo', [cmd, '-w', '-D', 'INPUT', '-s', ip, '-j', 'DROP']);
+    results.push(`${cmd}: DROP rule removed`);
+  } catch (err) {
+    results.push(`${cmd}: ${err.message}`);
+  }
+
+  // Remove from nginx deny list
+  try {
+    const removed = await removeFromDenyList(ip);
+    if (removed) {
+      await reloadNginx();
+      results.push('nginx: deny rule removed + reloaded');
+    } else {
+      results.push('nginx: no deny rule found');
+    }
+  } catch (err) {
+    results.push(`nginx deny list: ${err.message}`);
+  }
+
+  store.markUnbanned(ip);
   return results;
 }
 
@@ -120,6 +174,18 @@ export async function syncBannedIps() {
   }
 
   if (count > 0) logger.info(`Synced ${count} banned IPs from fail2ban + iptables`);
+
+  // Rebuild nginx deny list from all known banned IPs
+  const allBanned = store.getBannedIps().map(e => e.ip);
+  if (allBanned.length > 0) {
+    try {
+      await rebuildDenyList(allBanned);
+      await reloadNginx();
+    } catch (err) {
+      logger.warn(`Failed to rebuild nginx deny list: ${err.message}`);
+    }
+  }
+
   return count;
 }
 

@@ -60,6 +60,14 @@ if [ -f /var/log/fail2ban.log ]; then
   setfacl -m u:"$USER":r /var/log/fail2ban.log 2>/dev/null || chmod o+r /var/log/fail2ban.log
 fi
 
+# Create nginx deny list file (writable by ids-agent for HTTP-level blocking)
+NGINX_DENY_FILE="/etc/nginx/blocked-ips.conf"
+if [ ! -f "$NGINX_DENY_FILE" ]; then
+  echo "# Managed by ids-agent — do not edit manually" > "$NGINX_DENY_FILE"
+fi
+chown "$USER:$GROUP" "$NGINX_DENY_FILE"
+chmod 644 "$NGINX_DENY_FILE"
+
 # 7. Grant journal read access
 echo "[+] Granting systemd journal access"
 usermod -aG systemd-journal "$USER" 2>/dev/null || true
@@ -67,23 +75,54 @@ usermod -aG systemd-journal "$USER" 2>/dev/null || true
 # 8. Configure sudoers for autonomous actions (fail2ban + iptables)
 echo "[+] Configuring sudoers for IDS actions"
 cat > /etc/sudoers.d/ids-agent << 'SUDOERS'
-# IDS Agent — allow blocking IPs without password
+# IDS Agent — allow blocking/unblocking IPs without password
 ids-agent ALL=(ALL) NOPASSWD: /usr/bin/fail2ban-client set * banip *
+ids-agent ALL=(ALL) NOPASSWD: /usr/bin/fail2ban-client set * unbanip *
 ids-agent ALL=(ALL) NOPASSWD: /usr/bin/fail2ban-client status sshd
 ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/iptables -w -C INPUT -s * -j DROP
 ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/iptables -w -I INPUT -s * -j DROP
+ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/iptables -w -D INPUT -s * -j DROP
 ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/iptables -w -S INPUT
 ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -w -C INPUT -s * -j DROP
 ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -w -I INPUT -s * -j DROP
+ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -w -D INPUT -s * -j DROP
 ids-agent ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables -w -S INPUT
 ids-agent ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload nginx
 SUDOERS
 chmod 440 /etc/sudoers.d/ids-agent
 visudo -c -f /etc/sudoers.d/ids-agent
 
-# 9. Install systemd service
+# 9. Install systemd service (preserve existing env vars)
 echo "[+] Installing systemd service"
-cp "$SCRIPT_DIR/ids-agent.service" /etc/systemd/system/ids-agent.service
+LIVE_SERVICE="/etc/systemd/system/ids-agent.service"
+TEMPLATE="$SCRIPT_DIR/ids-agent.service"
+
+if [ -f "$LIVE_SERVICE" ]; then
+  # Extract Environment= lines from the live service file into an associative array
+  declare -A LIVE_ENVS
+  while IFS= read -r line; do
+    # Match: Environment="KEY=VALUE"
+    if [[ "$line" =~ ^Environment=\"([^=]+)=(.*)\"$ ]]; then
+      LIVE_ENVS["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+    fi
+  done < "$LIVE_SERVICE"
+
+  # Start from the template and replace placeholder values with live ones
+  cp "$TEMPLATE" "$LIVE_SERVICE"
+
+  for key in "${!LIVE_ENVS[@]}"; do
+    val="${LIVE_ENVS[$key]}"
+    # Use awk for safe replacement (no delimiter conflicts with token values)
+    awk -v k="$key" -v v="$val" '{
+      if ($0 ~ "^Environment=\"" k "=") print "Environment=\"" k "=" v "\""; else print
+    }' "$LIVE_SERVICE" > "${LIVE_SERVICE}.tmp" && mv "${LIVE_SERVICE}.tmp" "$LIVE_SERVICE"
+  done
+
+  echo "[~] Preserved existing environment variables from live service"
+else
+  cp "$TEMPLATE" "$LIVE_SERVICE"
+  echo "[+] Fresh install — remember to fill in environment variables"
+fi
 
 echo ""
 echo "=== Setup Complete ==="
@@ -109,4 +148,9 @@ echo "  4. Configure Nginx to log CF-Connecting-IP:"
 echo "     Add to nginx.conf http block:"
 echo "       log_format cf '\$http_cf_connecting_ip - \$remote_user [\$time_local] \"\$request\" \$status \$body_bytes_sent \"\$http_referer\" \"\$http_user_agent\"';"
 echo "       access_log /var/log/nginx/access.log cf;"
+echo ""
+echo "  5. Enable nginx IP blocking (IMPORTANT):"
+echo "     Add inside each nginx server block:"
+echo "       include /etc/nginx/blocked-ips.conf;"
+echo "     Then reload nginx: sudo systemctl reload nginx"
 echo ""

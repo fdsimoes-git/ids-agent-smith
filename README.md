@@ -86,6 +86,17 @@ http {
 }
 ```
 
+### IP Blocking via Nginx
+
+IDS Agent automatically manages `/etc/nginx/blocked-ips.conf` to block banned IPs at the HTTP level (essential when behind Cloudflare, since iptables only sees Cloudflare's IPs for web traffic). Add this include to each nginx `server` block:
+
+```nginx
+server {
+    include /etc/nginx/blocked-ips.conf;
+    # ... rest of your config
+}
+```
+
 ## Running
 
 ```bash

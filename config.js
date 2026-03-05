@@ -24,6 +24,8 @@ const config = {
     .map(c => c.trim().toUpperCase())
     .filter(Boolean),
 
+  nginxDenyListPath: process.env.NGINX_DENY_LIST_PATH || '/etc/nginx/blocked-ips.conf',
+
   logs: {
     nginx: process.env.NGINX_LOG_PATH || '/var/log/nginx/access.log',
     auth: process.env.AUTH_LOG_PATH || '/var/log/auth.log',
