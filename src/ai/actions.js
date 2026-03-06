@@ -123,17 +123,18 @@ export async function unblockIp(ip) {
     results.push(`${cmd}: ${err.message}`);
   }
 
-  // Remove from nginx deny list
+  // Remove from nginx deny list + always reload (emergency escape hatch)
   try {
     const removed = await removeFromDenyList(ip);
-    if (removed) {
-      await reloadNginx();
-      results.push('nginx: deny rule removed + reloaded');
-    } else {
-      results.push('nginx: no deny rule found');
-    }
+    results.push(removed ? 'nginx: deny rule removed' : 'nginx: no deny rule found');
   } catch (err) {
     results.push(`nginx deny list: ${err.message}`);
+  }
+  try {
+    await reloadNginx();
+    results.push('nginx: reloaded');
+  } catch (err) {
+    results.push(`nginx reload: ${err.message}`);
   }
 
   store.markUnbanned(ip);
