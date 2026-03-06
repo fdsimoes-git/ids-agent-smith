@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import config from '../../config.js';
 import logger from './logger.js';
 
-const HEADER = '# Managed by ids-agent — do not edit manually\n';
+const HEADER = '# Managed by ids-agent — do not edit manually';
 
 // Simple async mutex to prevent concurrent read-modify-write races
 let lock = Promise.resolve();

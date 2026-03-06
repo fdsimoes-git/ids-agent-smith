@@ -60,26 +60,26 @@ if [ -f /var/log/fail2ban.log ]; then
   setfacl -m u:"$USER":r /var/log/fail2ban.log 2>/dev/null || chmod o+r /var/log/fail2ban.log
 fi
 
-# Create nginx deny list file (writable by ids-agent for HTTP-level blocking)
-if [ ! -d /etc/nginx ]; then
-  echo "[!] /etc/nginx not found — is nginx installed? Skipping nginx deny list + Cloudflare config."
-else
-
+# Create nginx deny list file (always — systemd ReadWritePaths requires it to exist)
 NGINX_DENY_FILE="/etc/nginx/blocked-ips.conf"
+echo "[+] Ensuring nginx deny list file exists: $NGINX_DENY_FILE"
+mkdir -p "$(dirname "$NGINX_DENY_FILE")"
 if [ ! -f "$NGINX_DENY_FILE" ]; then
   echo "# Managed by ids-agent — do not edit manually" > "$NGINX_DENY_FILE"
 fi
 chown "$USER:$GROUP" "$NGINX_DENY_FILE"
 chmod 644 "$NGINX_DENY_FILE"
 
-# Install Cloudflare real IP config (so nginx sees real visitor IPs, not Cloudflare's)
-CF_REAL_IP="/etc/nginx/conf.d/cloudflare-real-ip.conf"
-echo "[+] Installing Cloudflare real IP config: $CF_REAL_IP"
-mkdir -p "$(dirname "$CF_REAL_IP")"
-cp "$SCRIPT_DIR/cloudflare-real-ip.conf" "$CF_REAL_IP"
-chmod 644 "$CF_REAL_IP"
-
-fi # end nginx check
+# Install Cloudflare real IP config (only if nginx is installed)
+if [ -d /etc/nginx/conf.d ] || [ -d /etc/nginx ]; then
+  CF_REAL_IP="/etc/nginx/conf.d/cloudflare-real-ip.conf"
+  echo "[+] Installing Cloudflare real IP config: $CF_REAL_IP"
+  mkdir -p "$(dirname "$CF_REAL_IP")"
+  cp "$SCRIPT_DIR/cloudflare-real-ip.conf" "$CF_REAL_IP"
+  chmod 644 "$CF_REAL_IP"
+else
+  echo "[~] nginx not found — skipping Cloudflare real IP config"
+fi
 
 # 7. Grant journal read access
 echo "[+] Granting systemd journal access"
