@@ -91,8 +91,12 @@ export async function blockIp(ip) {
     results.push(`nginx deny list: ${err.message}`);
   }
 
-  if (f2bBanned || iptablesBlocked || nginxBlocked) {
-    store.markBanned(ip, 'all');
+  const layers = [];
+  if (f2bBanned) layers.push('fail2ban');
+  if (iptablesBlocked) layers.push(cmd);
+  if (nginxBlocked) layers.push('nginx');
+  if (layers.length > 0) {
+    store.markBanned(ip, layers.join(','));
   }
 
   return results;
@@ -175,15 +179,13 @@ export async function syncBannedIps() {
 
   if (count > 0) logger.info(`Synced ${count} banned IPs from fail2ban + iptables`);
 
-  // Rebuild nginx deny list from all known banned IPs
+  // Rebuild nginx deny list from all known banned IPs (always rebuild to clear stale entries)
   const allBanned = store.getBannedIps().map(e => e.ip);
-  if (allBanned.length > 0) {
-    try {
-      await rebuildDenyList(allBanned);
-      await reloadNginx();
-    } catch (err) {
-      logger.warn(`Failed to rebuild nginx deny list: ${err.message}`);
-    }
+  try {
+    await rebuildDenyList(allBanned);
+    await reloadNginx();
+  } catch (err) {
+    logger.warn(`Failed to rebuild nginx deny list: ${err.message}`);
   }
 
   return count;

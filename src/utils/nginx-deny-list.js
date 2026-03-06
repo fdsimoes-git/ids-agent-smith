@@ -1,35 +1,49 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, rename } from 'node:fs/promises';
 import config from '../../config.js';
 import logger from './logger.js';
 
 const HEADER = '# Managed by ids-agent — do not edit manually\n';
 
-export async function addToDenyList(ip) {
-  const entries = await readDenyList();
-  if (entries.has(ip)) return false;
-
-  entries.add(ip);
-  await writeDenyList(entries);
-  logger.info(`nginx deny list: added ${ip}`);
-  return true;
+// Simple async mutex to prevent concurrent read-modify-write races
+let lock = Promise.resolve();
+function withLock(fn) {
+  const next = lock.then(fn, fn);
+  lock = next.catch(() => {});
+  return next;
 }
 
-export async function removeFromDenyList(ip) {
-  const entries = await readDenyList();
-  if (!entries.has(ip)) return false;
+export function addToDenyList(ip) {
+  return withLock(async () => {
+    const entries = await readDenyList();
+    if (entries.has(ip)) return false;
 
-  entries.delete(ip);
-  await writeDenyList(entries);
-  logger.info(`nginx deny list: removed ${ip}`);
-  return true;
+    entries.add(ip);
+    await writeDenyList(entries);
+    logger.info(`nginx deny list: added ${ip}`);
+    return true;
+  });
 }
 
-export async function rebuildDenyList(bannedIps) {
-  const entries = new Set(bannedIps);
-  await writeDenyList(entries);
-  if (entries.size > 0) {
-    logger.info(`nginx deny list: rebuilt with ${entries.size} IPs`);
-  }
+export function removeFromDenyList(ip) {
+  return withLock(async () => {
+    const entries = await readDenyList();
+    if (!entries.has(ip)) return false;
+
+    entries.delete(ip);
+    await writeDenyList(entries);
+    logger.info(`nginx deny list: removed ${ip}`);
+    return true;
+  });
+}
+
+export function rebuildDenyList(bannedIps) {
+  return withLock(async () => {
+    const entries = new Set(bannedIps);
+    await writeDenyList(entries);
+    if (entries.size > 0) {
+      logger.info(`nginx deny list: rebuilt with ${entries.size} IPs`);
+    }
+  });
 }
 
 async function readDenyList() {
@@ -54,5 +68,7 @@ async function writeDenyList(entries) {
     lines.push(`deny ${ip};`);
   }
   lines.push('');
-  await writeFile(config.nginxDenyListPath, lines.join('\n'), 'utf8');
+  const tmpPath = config.nginxDenyListPath + '.tmp';
+  await writeFile(tmpPath, lines.join('\n'), 'utf8');
+  await rename(tmpPath, config.nginxDenyListPath);
 }

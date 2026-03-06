@@ -71,6 +71,7 @@ chmod 644 "$NGINX_DENY_FILE"
 # Install Cloudflare real IP config (so nginx sees real visitor IPs, not Cloudflare's)
 CF_REAL_IP="/etc/nginx/conf.d/cloudflare-real-ip.conf"
 echo "[+] Installing Cloudflare real IP config: $CF_REAL_IP"
+mkdir -p "$(dirname "$CF_REAL_IP")"
 cp "$SCRIPT_DIR/cloudflare-real-ip.conf" "$CF_REAL_IP"
 chmod 644 "$CF_REAL_IP"
 
