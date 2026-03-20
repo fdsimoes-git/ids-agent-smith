@@ -111,7 +111,85 @@ SUDOERS
 chmod 440 /etc/sudoers.d/ids-agent
 visudo -c -f /etc/sudoers.d/ids-agent
 
-# 9. Install systemd service (preserve existing env vars)
+# 9. Detect available services and configure ReadOnlyPaths accordingly
+# This prevents systemd 226/NAMESPACE errors when paths don't exist.
+echo ""
+echo "=== Service Detection ==="
+echo "Checking which services are available on this host..."
+echo "(Missing paths in ReadOnlyPaths cause systemd to fail with exit code 226/NAMESPACE)"
+echo ""
+
+# Map: service name → log path to check for existence
+declare -A SERVICE_CHECKS=(
+  [nginx]="/var/log/nginx"
+  [fail2ban]="/var/log/fail2ban.log"
+  [ufw]="/var/log/ufw.log"
+)
+
+ENABLE_NGINX=false
+ENABLE_FAIL2BAN=false
+ENABLE_UFW=false
+
+for svc in nginx fail2ban ufw; do
+  path="${SERVICE_CHECKS[$svc]}"
+  if [ -e "$path" ]; then
+    detected="detected"
+  else
+    detected="not found"
+  fi
+
+  # In non-interactive environments (cloud-init, Ansible), default to auto-detect
+  if [[ -t 0 ]] && [[ -r /dev/tty ]]; then
+    while true; do
+      if ! read -rp "  Enable $svc log monitoring? ($path — $detected) [y/N]: " answer </dev/tty; then
+        answer="n"
+        echo ""
+        break
+      fi
+      case "${answer,,}" in
+        y|yes) answer="y"; break ;;
+        n|no|"") answer="n"; break ;;
+        *) echo "    Please answer y or n." ;;
+      esac
+    done
+  else
+    # Non-interactive: enable only if the path exists
+    if [ -e "$path" ]; then
+      answer="y"
+      echo "  [auto] $svc monitoring ENABLED ($path exists)"
+    else
+      answer="n"
+      echo "  [auto] $svc monitoring DISABLED ($path not found)"
+    fi
+  fi
+
+  if [ "$answer" = "y" ]; then
+    # Ensure the path exists so ReadOnlyPaths won't trigger 226/NAMESPACE
+    if [ ! -e "$path" ]; then
+      echo "    [!] $path does not exist — creating it to prevent systemd 226/NAMESPACE failure"
+      case "$svc" in
+        nginx) mkdir -p "$path" ;;
+        *)
+          # Create with restrictive perms matching Ubuntu log conventions (root:adm 0640)
+          ( umask 0077; : > "$path" )
+          chown root:adm "$path" 2>/dev/null || true
+          chmod 0640 "$path" 2>/dev/null || true
+          ;;
+      esac
+    fi
+    case "$svc" in
+      nginx)    ENABLE_NGINX=true ;;
+      fail2ban) ENABLE_FAIL2BAN=true ;;
+      ufw)      ENABLE_UFW=true ;;
+    esac
+    echo "    -> $svc monitoring ENABLED"
+  else
+    echo "    -> $svc monitoring DISABLED (path will be commented out)"
+  fi
+done
+echo ""
+
+# 10. Install systemd service (preserve existing env vars)
 echo "[+] Installing systemd service"
 LIVE_SERVICE="/etc/systemd/system/ids-agent.service"
 TEMPLATE="$SCRIPT_DIR/ids-agent.service"
@@ -142,6 +220,19 @@ else
   cp "$TEMPLATE" "$LIVE_SERVICE"
   echo "[+] Fresh install — remember to fill in environment variables"
 fi
+
+# Uncomment ReadOnlyPaths lines based on user selections
+if [ "$ENABLE_NGINX" = true ]; then
+  sed -i 's|^#ReadOnlyPaths=/var/log/nginx$|ReadOnlyPaths=/var/log/nginx|' "$LIVE_SERVICE"
+fi
+if [ "$ENABLE_FAIL2BAN" = true ]; then
+  sed -i 's|^#ReadOnlyPaths=/var/log/fail2ban.log$|ReadOnlyPaths=/var/log/fail2ban.log|' "$LIVE_SERVICE"
+fi
+if [ "$ENABLE_UFW" = true ]; then
+  sed -i 's|^#ReadOnlyPaths=/var/log/ufw.log$|ReadOnlyPaths=/var/log/ufw.log|' "$LIVE_SERVICE"
+fi
+
+echo "[+] ReadOnlyPaths configured based on detected services"
 
 echo ""
 echo "=== Setup Complete ==="
