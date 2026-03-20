@@ -108,6 +108,32 @@ export async function sendActionTaken(ip, analysis) {
   );
 }
 
+const AGENT_SMITH_GIF = 'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExMXNweWMwcml0bHhjODZ1bjVnaG1xdGZyNHdmNXQ3aXdlajE0NnBvZiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/nbpvCPsFLItHO/giphy.gif';
+
+export async function sendAgentSmithGif(ip) {
+  if (!config.telegram.botToken || !config.telegram.chatId) return;
+
+  try {
+    const body = {
+      chat_id: config.telegram.chatId,
+      animation: AGENT_SMITH_GIF,
+      caption: `\u{1F576}\uFE0F <b>Agent Smith has dealt with</b> <code>${ip}</code>`,
+      parse_mode: 'HTML',
+    };
+    const res = await fetch(`${API_BASE}/sendAnimation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      logger.error('Telegram sendAnimation error', { status: res.status, body: errBody.slice(0, 200) });
+    }
+  } catch (err) {
+    logger.error('Telegram GIF send failed', { error: err.message });
+  }
+}
+
 export async function sendMessage(text, replyMarkup) {
   if (!config.telegram.botToken || !config.telegram.chatId) {
     logger.debug('Telegram not configured, message dropped');
