@@ -204,17 +204,18 @@ else
   echo "[+] Fresh install — remember to fill in environment variables"
 fi
 
-# Uncomment/comment ReadOnlyPaths lines based on user selections
-# Template has lines like: #ReadOnlyPaths=/var/log/nginx  # uncomment if nginx is installed
+# Uncomment ReadOnlyPaths/ReadWritePaths lines based on user selections
 if [ "$ENABLE_NGINX" = true ]; then
-  sed -i 's|^#ReadOnlyPaths=/var/log/nginx |ReadOnlyPaths=/var/log/nginx |' "$LIVE_SERVICE"
+  sed -i 's|^#ReadOnlyPaths=/var/log/nginx$|ReadOnlyPaths=/var/log/nginx|' "$LIVE_SERVICE"
 fi
 if [ "$ENABLE_FAIL2BAN" = true ]; then
-  sed -i 's|^#ReadOnlyPaths=/var/log/fail2ban.log |ReadOnlyPaths=/var/log/fail2ban.log |' "$LIVE_SERVICE"
+  sed -i 's|^#ReadOnlyPaths=/var/log/fail2ban.log$|ReadOnlyPaths=/var/log/fail2ban.log|' "$LIVE_SERVICE"
 fi
 if [ "$ENABLE_UFW" = true ]; then
-  sed -i 's|^#ReadOnlyPaths=/var/log/ufw.log |ReadOnlyPaths=/var/log/ufw.log |' "$LIVE_SERVICE"
-  sed -i 's|^#ReadWritePaths=/run/ufw.lock |ReadWritePaths=/run/ufw.lock |' "$LIVE_SERVICE"
+  sed -i 's|^#ReadOnlyPaths=/var/log/ufw.log$|ReadOnlyPaths=/var/log/ufw.log|' "$LIVE_SERVICE"
+  sed -i 's|^#ReadWritePaths=/run/ufw.lock$|ReadWritePaths=/run/ufw.lock|' "$LIVE_SERVICE"
+  # Ensure the lock file exists so ReadWritePaths doesn't trigger 226/NAMESPACE
+  touch /run/ufw.lock 2>/dev/null || true
 fi
 
 echo "[+] ReadOnlyPaths configured based on detected services"
