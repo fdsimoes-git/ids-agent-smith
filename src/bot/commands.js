@@ -147,11 +147,15 @@ async function handleMessage(msg, store, memory) {
           return;
         }
         const results = await blockIp(ip);
-        await sendMessage(
-          `\u2705 IP <code>${ip}</code> blocked:\n` +
-          results.map(r => `\u251C ${escapeHtml(r)}`).join('\n')
-        );
-        await sendAgentSmithGif(ip);
+        if (results.length > 0) {
+          await sendMessage(
+            `\u2705 IP <code>${ip}</code> blocked:\n` +
+            results.map(r => `\u251C ${escapeHtml(r)}`).join('\n')
+          );
+          await sendAgentSmithGif(ip);
+        } else {
+          await sendMessage(`\u274C Failed to block <code>${ip}</code> — no blocking layers succeeded.`);
+        }
         break;
       }
 

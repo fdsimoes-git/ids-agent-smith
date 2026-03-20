@@ -42,9 +42,13 @@ async function handleThreat(threat) {
       await sendAIAnalysis(threat, analysis);
 
       if (config.autonomousMode && analysis.action === 'block' && analysis.confidence >= 70) {
-        await executeAction('block', threat.ip, analysis);
-        await sendActionTaken(threat.ip, analysis);
-        await sendAgentSmithGif(threat.ip);
+        const logEntry = await executeAction('block', threat.ip, analysis);
+        if (Array.isArray(logEntry.result) && logEntry.result.length > 0) {
+          await sendActionTaken(threat.ip, analysis);
+          await sendAgentSmithGif(threat.ip);
+        } else {
+          logger.warn(`Autonomous block failed for ${threat.ip}`, { result: logEntry.result });
+        }
       } else if (!config.autonomousMode && analysis.action === 'block') {
         await sendMessage(
           `\u26A0\uFE0F AI recommends <b>blocking</b> <code>${threat.ip}</code> ` +
