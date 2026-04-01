@@ -10,7 +10,7 @@ import { parseUfwLine } from './parsers/ufw.js';
 import { parseFail2banLine } from './parsers/fail2ban.js';
 import { parseJournalLine } from './parsers/journal.js';
 import { runDetectors } from './detectors/index.js';
-import { sendAlert, sendAIAnalysis, sendActionTaken, sendMessage } from './alerters/telegram.js';
+import { sendAlert, sendAIAnalysis, sendActionTaken, sendAgentSmithGif, sendMessage } from './alerters/telegram.js';
 import { scheduleDailySummary, stopDailySummary } from './alerters/daily-summary.js';
 import { analyzeThreat, generateWeeklyReport } from './ai/analyzer.js';
 import { executeAction, syncBannedIps } from './ai/actions.js';
@@ -43,7 +43,12 @@ async function handleThreat(threat) {
 
       if (config.autonomousMode && analysis.action === 'block' && analysis.confidence >= 70) {
         await executeAction('block', threat.ip, analysis);
-        await sendActionTaken(threat.ip, analysis);
+        if (store.wasBanned(threat.ip)) {
+          await sendActionTaken(threat.ip, analysis);
+          await sendAgentSmithGif(threat.ip);
+        } else {
+          logger.warn(`Autonomous block failed for ${threat.ip} — no layers succeeded`);
+        }
       } else if (!config.autonomousMode && analysis.action === 'block') {
         await sendMessage(
           `\u26A0\uFE0F AI recommends <b>blocking</b> <code>${threat.ip}</code> ` +

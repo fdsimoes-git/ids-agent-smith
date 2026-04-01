@@ -108,30 +108,62 @@ export async function sendActionTaken(ip, analysis) {
   );
 }
 
+const AGENT_SMITH_GIF = 'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExMXNweWMwcml0bHhjODZ1bjVnaG1xdGZyNHdmNXQ3aXdlajE0NnBvZiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/nbpvCPsFLItHO/giphy.gif';
+
+export async function sendAgentSmithGif(ip) {
+  if (!config.telegram.botToken || !config.telegram.chatId) {
+    logger.debug('Telegram not configured, Agent Smith GIF dropped');
+    return;
+  }
+
+  const safeIp = escapeHtml(ip);
+  queue.push({
+    type: 'animation',
+    animation: AGENT_SMITH_GIF,
+    caption: `\u{1F576}\uFE0F <b>Agent Smith has dealt with</b> <code>${safeIp}</code>`,
+  });
+  if (!draining) drainQueue();
+}
+
 export async function sendMessage(text, replyMarkup) {
   if (!config.telegram.botToken || !config.telegram.chatId) {
     logger.debug('Telegram not configured, message dropped');
     return;
   }
 
-  queue.push({ text, replyMarkup });
+  queue.push({ type: 'message', text, replyMarkup });
   if (!draining) drainQueue();
 }
 
 async function drainQueue() {
   draining = true;
   while (queue.length > 0) {
-    const { text, replyMarkup } = queue.shift();
+    const item = queue.shift();
     try {
-      const body = {
-        chat_id: config.telegram.chatId,
-        text,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      };
-      if (replyMarkup) body.reply_markup = replyMarkup;
+      let endpoint, body;
+      if (item.type === 'animation') {
+        endpoint = 'sendAnimation';
+        body = {
+          chat_id: config.telegram.chatId,
+          animation: item.animation,
+          caption: item.caption,
+          parse_mode: 'HTML',
+        };
+      } else if (item.type === 'message') {
+        endpoint = 'sendMessage';
+        body = {
+          chat_id: config.telegram.chatId,
+          text: item.text,
+          parse_mode: 'HTML',
+          disable_web_page_preview: true,
+        };
+        if (item.replyMarkup) body.reply_markup = item.replyMarkup;
+      } else {
+        logger.error('Unknown Telegram queue item type', { type: item.type });
+        continue;
+      }
 
-      const res = await fetch(`${API_BASE}/sendMessage`, {
+      const res = await fetch(`${API_BASE}/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

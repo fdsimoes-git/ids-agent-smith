@@ -1,6 +1,6 @@
 import config from '../../config.js';
 import logger from '../utils/logger.js';
-import { sendMessage } from '../alerters/telegram.js';
+import { sendMessage, sendAgentSmithGif } from '../alerters/telegram.js';
 import { blockIp, unblockIp } from '../ai/actions.js';
 import { generateIpReport } from '../ai/analyzer.js';
 import { sanitizeIp } from '../utils/sanitize.js';
@@ -147,10 +147,15 @@ async function handleMessage(msg, store, memory) {
           return;
         }
         const results = await blockIp(ip);
+        const blocked = store.wasBanned(ip);
         await sendMessage(
-          `\u2705 IP <code>${ip}</code> blocked:\n` +
-          results.map(r => `\u251C ${escapeHtml(r)}`).join('\n')
+          blocked
+            ? `\u2705 IP <code>${ip}</code> blocked:\n` +
+              results.map(r => `\u251C ${escapeHtml(r)}`).join('\n')
+            : `\u274C Failed to block <code>${ip}</code> — no blocking layers succeeded.\n` +
+              results.map(r => `\u251C ${escapeHtml(r)}`).join('\n')
         );
+        if (blocked) await sendAgentSmithGif(ip);
         break;
       }
 
