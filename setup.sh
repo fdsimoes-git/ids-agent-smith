@@ -217,13 +217,18 @@ if [ ! -f "$LIVE_SERVICE" ] && [ -f "$OLD_SERVICE" ]; then
   done < "$OLD_SERVICE"
 
   # Map IDS_* keys to IDPS_* equivalents (e.g. IDS_PORT → IDPS_PORT)
+  # IDPS_* values take precedence — only map IDS_* when IDPS_* is not already present
   declare -A MIGRATED_ENVS
   for key in "${!OLD_ENVS[@]}"; do
     val="${OLD_ENVS[$key]}"
     if [[ "$key" == IDS_* ]]; then
       new_key="IDPS_${key#IDS_}"
-      echo "[~] Renaming $key → $new_key"
-      MIGRATED_ENVS["$new_key"]="$val"
+      if [[ -n "${OLD_ENVS[$new_key]+x}" ]]; then
+        echo "[~] Skipping $key → $new_key (explicit $new_key already present)"
+      else
+        echo "[~] Renaming $key → $new_key"
+        MIGRATED_ENVS["$new_key"]="$val"
+      fi
     else
       MIGRATED_ENVS["$key"]="$val"
     fi
@@ -277,13 +282,18 @@ elif [ -f "$LIVE_SERVICE" ]; then
   done < "$LIVE_SERVICE"
 
   # Map IDS_* keys to IDPS_* equivalents (e.g. IDS_PORT → IDPS_PORT)
+  # IDPS_* values take precedence — only map IDS_* when IDPS_* is not already present
   declare -A MIGRATED_LIVE_ENVS
   for key in "${!LIVE_ENVS[@]}"; do
     val="${LIVE_ENVS[$key]}"
     if [[ "$key" == IDS_* ]]; then
       new_key="IDPS_${key#IDS_}"
-      echo "[~] Renaming $key → $new_key"
-      MIGRATED_LIVE_ENVS["$new_key"]="$val"
+      if [[ -n "${LIVE_ENVS[$new_key]+x}" ]]; then
+        echo "[~] Skipping $key → $new_key (explicit $new_key already present)"
+      else
+        echo "[~] Renaming $key → $new_key"
+        MIGRATED_LIVE_ENVS["$new_key"]="$val"
+      fi
     else
       MIGRATED_LIVE_ENVS["$key"]="$val"
     fi
