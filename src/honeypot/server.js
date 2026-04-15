@@ -12,96 +12,107 @@ export async function startHoneypot(onThreat) {
   await honeypotStats.load();
   honeypotStats.startAutoSave();
 
+  const startedPorts = [];
+
   for (const port of config.honeypot.ports) {
     try {
-      const server = createDecoyServer(port, onThreat);
+      const server = await createDecoyServer(port, onThreat);
       servers.push(server);
+      startedPorts.push(port);
     } catch (err) {
       logger.error(`Honeypot: failed to start on port ${port}`, { error: err.message });
     }
   }
 
-  logger.info(`Honeypot started on ports: ${config.honeypot.ports.join(', ')}`);
+  if (startedPorts.length > 0) {
+    logger.info(`Honeypot started on ports: ${startedPorts.join(', ')}`);
+  } else {
+    logger.warn('Honeypot: no ports could be started');
+  }
 }
 
 function createDecoyServer(port, onThreat) {
-  const server = createServer(socket => {
-    const remoteIp = sanitizeIp(socket.remoteAddress?.replace('::ffff:', ''));
-    if (!remoteIp) {
-      socket.destroy();
-      return;
-    }
+  return new Promise((resolve, reject) => {
+    const server = createServer(socket => {
+      const remoteIp = sanitizeIp(socket.remoteAddress?.replace('::ffff:', ''));
+      if (!remoteIp) {
+        socket.destroy();
+        return;
+      }
 
-    const timestamp = new Date().toISOString();
-    let payload = '';
+      const timestamp = new Date().toISOString();
+      let payload = '';
 
-    socket.setTimeout(10_000);
-    socket.on('timeout', () => socket.destroy());
+      socket.setTimeout(10_000);
+      socket.on('timeout', () => socket.destroy());
 
-    socket.on('data', chunk => {
-      if (payload.length < config.honeypot.maxPayloadBytes) {
-        payload += chunk.toString('utf8', 0, config.honeypot.maxPayloadBytes - payload.length);
+      socket.on('data', chunk => {
+        if (payload.length < config.honeypot.maxPayloadBytes) {
+          payload += chunk.toString('utf8', 0, config.honeypot.maxPayloadBytes - payload.length);
+        }
+      });
+
+      socket.on('end', () => finalize());
+      socket.on('close', () => finalize());
+      socket.on('error', () => socket.destroy());
+
+      let finalized = false;
+      function finalize() {
+        if (finalized) return;
+        finalized = true;
+
+        const safePayload = payload.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').slice(0, config.honeypot.maxPayloadBytes);
+
+        honeypotStats.record({
+          ip: remoteIp,
+          port,
+          timestamp,
+          payload: safePayload,
+        });
+
+        logger.info(`Honeypot hit: ${remoteIp} -> port ${port}`, {
+          payload: safePayload.slice(0, 100),
+        });
+
+        if (onThreat) {
+          onThreat({
+            rule: 'honeypot',
+            severity: 'HIGH',
+            ip: remoteIp,
+            endpoint: `TCP:${port}`,
+            timestamp,
+            details: `Connection to honeypot port ${port}` + (safePayload ? ` — payload: ${safePayload.slice(0, 80)}` : ''),
+            suggestedAction: 'block',
+            source: 'honeypot',
+          });
+        }
       }
     });
 
-    socket.on('end', () => finalize());
-    socket.on('close', () => finalize());
-    socket.on('error', () => socket.destroy());
-
-    let finalized = false;
-    function finalize() {
-      if (finalized) return;
-      finalized = true;
-
-      // Strip control chars from payload for safe logging
-      const safePayload = payload.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').slice(0, config.honeypot.maxPayloadBytes);
-
-      honeypotStats.record({
-        ip: remoteIp,
-        port,
-        timestamp,
-        payload: safePayload,
-      });
-
-      logger.info(`Honeypot hit: ${remoteIp} -> port ${port}`, {
-        payload: safePayload.slice(0, 100),
-      });
-
-      if (onThreat) {
-        onThreat({
-          rule: 'honeypot',
-          severity: 'HIGH',
-          ip: remoteIp,
-          endpoint: `TCP:${port}`,
-          timestamp,
-          details: `Connection to honeypot port ${port}` + (safePayload ? ` — payload: ${safePayload.slice(0, 80)}` : ''),
-          suggestedAction: 'block',
-          source: 'honeypot',
-        });
+    server.on('error', err => {
+      if (err.code === 'EADDRINUSE') {
+        reject(new Error(`port ${port} already in use`));
+      } else if (err.code === 'EACCES') {
+        reject(new Error(`no permission to bind port ${port} — use a port > 1024 or run with CAP_NET_BIND_SERVICE`));
+      } else {
+        reject(err);
       }
-    }
-  });
+    });
 
-  server.on('error', err => {
-    if (err.code === 'EADDRINUSE') {
-      logger.error(`Honeypot: port ${port} already in use — skipping`);
-    } else if (err.code === 'EACCES') {
-      logger.error(`Honeypot: no permission to bind port ${port} — use a port > 1024 or run with CAP_NET_BIND_SERVICE`);
-    } else {
-      logger.error(`Honeypot server error on port ${port}`, { error: err.message });
-    }
+    server.listen(port, '0.0.0.0', () => {
+      logger.info(`Honeypot listening on port ${port}`);
+      resolve(server);
+    });
   });
-
-  server.listen(port, '0.0.0.0', () => {
-    logger.info(`Honeypot listening on port ${port}`);
-  });
-
-  return server;
 }
 
 export async function stopHoneypot() {
   const closePromises = servers.map(s => new Promise(resolve => {
-    s.close(resolve);
+    if (s.listening) {
+      s.close(resolve);
+    } else {
+      resolve();
+    }
   }));
   await Promise.all(closePromises);
   await honeypotStats.stop();

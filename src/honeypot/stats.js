@@ -8,6 +8,7 @@ class HoneypotStats {
     this.connections = [];
     this.dirty = false;
     this.saveTimer = null;
+    this.isSaving = false;
   }
 
   async load() {
@@ -27,8 +28,9 @@ class HoneypotStats {
   }
 
   startAutoSave() {
+    if (this.saveTimer) clearInterval(this.saveTimer);
     this.saveTimer = setInterval(() => {
-      if (this.dirty) this.save();
+      if (this.dirty && !this.isSaving) this.save();
     }, 60_000);
   }
 
@@ -92,7 +94,6 @@ class HoneypotStats {
       .map(c => ({ ip: c.ip, port: c.port, timestamp: c.timestamp, payload: c.payload }));
 
     return {
-      total: this.connections,
       totalConnections: this.connections.length,
       connectionsLast24h: recent.length,
       uniqueIps: Object.keys(byIp).length,
@@ -104,6 +105,8 @@ class HoneypotStats {
   }
 
   async save() {
+    if (this.isSaving) return;
+    this.isSaving = true;
     try {
       const dir = dirname(config.honeypot.dataPath);
       await mkdir(dir, { recursive: true }).catch(() => {});
@@ -115,6 +118,8 @@ class HoneypotStats {
       this.dirty = false;
     } catch (err) {
       logger.error('Failed to save honeypot stats', { error: err.message });
+    } finally {
+      this.isSaving = false;
     }
   }
 

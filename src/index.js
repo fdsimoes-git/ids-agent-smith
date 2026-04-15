@@ -113,7 +113,11 @@ async function shutdown(signal) {
   stopBot();
 
   if (config.honeypot.enabled) {
-    await stopHoneypot();
+    try {
+      await stopHoneypot();
+    } catch (err) {
+      logger.error('Error stopping honeypot', { error: err.message });
+    }
   }
 
   for (const tailer of tailers) {

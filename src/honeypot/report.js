@@ -78,7 +78,7 @@ export function generateTelegramReport() {
   if (summary.topPorts.length > 0) {
     lines.push('');
     lines.push('<b>Most Probed Ports:</b>');
-    for (const { port, count } of summary.topPorts) {
+    for (const { port, count } of summary.topPorts.slice(0, 5)) {
       lines.push(`  :${port} — ${count} hits`);
     }
   }
@@ -97,9 +97,9 @@ export function generateHtmlReport() {
     .map(({ port, count }) => `<tr><td>:${port}</td><td>${count}</td><td><div class="bar bar-port" style="width:${pct(count, summary.topPorts[0]?.count)}%"></div></td></tr>`)
     .join('\n');
 
+  const maxH = Math.max(...summary.hourlyLast24h.map(h => h.count), 1);
   const hourlyBars = summary.hourlyLast24h
     .map(({ hour, count }) => {
-      const maxH = Math.max(...summary.hourlyLast24h.map(h => h.count), 1);
       const height = Math.max(2, Math.round((count / maxH) * 120));
       return `<div class="hbar-col"><div class="hbar" style="height:${height}px"></div><span>${hour}</span><small>${count}</small></div>`;
     })
