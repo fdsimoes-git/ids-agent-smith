@@ -29,10 +29,14 @@ export async function startHoneypot(onThreat) {
   } else {
     logger.warn('Honeypot: no ports could be started');
   }
+
+  return startedPorts;
 }
 
 function createDecoyServer(port, onThreat) {
   return new Promise((resolve, reject) => {
+    let bound = false;
+
     const server = createServer(socket => {
       const remoteIp = sanitizeIp(socket.remoteAddress?.replace('::ffff:', ''));
       if (!remoteIp) {
@@ -95,16 +99,22 @@ function createDecoyServer(port, onThreat) {
     });
 
     server.on('error', err => {
-      if (err.code === 'EADDRINUSE') {
-        reject(new Error(`port ${port} already in use`));
-      } else if (err.code === 'EACCES') {
-        reject(new Error(`no permission to bind port ${port} — use a port > 1024 or run with CAP_NET_BIND_SERVICE`));
+      if (!bound) {
+        if (err.code === 'EADDRINUSE') {
+          reject(new Error(`port ${port} already in use`));
+        } else if (err.code === 'EACCES') {
+          reject(new Error(`no permission to bind port ${port} — use a port > 1024 or run with CAP_NET_BIND_SERVICE`));
+        } else {
+          reject(err);
+        }
       } else {
-        reject(err);
+        logger.error(`Honeypot runtime error on port ${port}`, { error: err.message });
+        server.close();
       }
     });
 
     server.listen(port, '0.0.0.0', () => {
+      bound = true;
       logger.info(`Honeypot listening on port ${port}`);
       resolve(server);
     });

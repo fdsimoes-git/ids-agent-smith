@@ -170,12 +170,13 @@ async function main() {
   journalTailer.start();
 
   // Honeypot (optional) — load stats before API so /honeypot/stats is ready
+  let honeypotPorts = [];
   if (config.honeypot.enabled) {
-    await startHoneypot(threat => {
+    honeypotPorts = await startHoneypot(threat => {
       handleThreat(threat).catch(err => {
         logger.error('Honeypot threat handler error', { error: err.message });
       });
-    });
+    }) || [];
   }
 
   // HTTP API
@@ -202,12 +203,11 @@ async function main() {
     `Monitoring: ${config.monitoredService}`,
     `API port: ${config.api.port}`,
   ];
-  if (config.honeypot.enabled) {
-    const ports = config.honeypot.ports;
+  if (honeypotPorts.length > 0) {
     const maxShow = 10;
-    const portStr = ports.length <= maxShow
-      ? ports.join(', ')
-      : ports.slice(0, maxShow).join(', ') + ` + ${ports.length - maxShow} more`;
+    const portStr = honeypotPorts.length <= maxShow
+      ? honeypotPorts.join(', ')
+      : honeypotPorts.slice(0, maxShow).join(', ') + ` + ${honeypotPorts.length - maxShow} more`;
     startupLines.push(`Honeypot: <b>ON</b> (ports: ${portStr})`);
   }
   await sendMessage(startupLines.join('\n'));
