@@ -38,9 +38,9 @@ IDPS Agent monitors your server's log files in real-time, detects threats using 
 ## Quick Setup
 
 ```bash
-# Clone the repo
-git clone <your-repo-url> /opt/idps-agent
-cd /opt/idps-agent
+# Clone the repo (don't clone into /opt/idps-agent — setup.sh installs there)
+git clone <your-repo-url> ~/idps-agent
+cd ~/idps-agent
 
 # Run setup (as root)
 sudo bash setup.sh
