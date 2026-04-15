@@ -208,16 +208,54 @@ if [ ! -f "$LIVE_SERVICE" ] && [ -f "$OLD_SERVICE" ]; then
 
   declare -A OLD_ENVS
   while IFS= read -r line; do
-    if [[ "$line" =~ ^Environment=\"([^=]+)=(.*)\"$ ]]; then
-      OLD_ENVS["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+    if [[ "$line" =~ ^[[:space:]]*Environment=\"?([^=]+)=(.*) ]]; then
+      key="${BASH_REMATCH[1]}"
+      val="${BASH_REMATCH[2]}"
+      val="${val%\"}"  # strip trailing quote if present
+      OLD_ENVS["$key"]="$val"
     fi
   done < "$OLD_SERVICE"
 
+  # Map IDS_* keys to IDPS_* equivalents (e.g. IDS_PORT → IDPS_PORT)
+  declare -A MIGRATED_ENVS
   for key in "${!OLD_ENVS[@]}"; do
     val="${OLD_ENVS[$key]}"
-    awk -v k="$key" -v v="$val" '{
-      if ($0 ~ "^Environment=\"" k "=") print "Environment=\"" k "=" v "\""; else print
-    }' "$LIVE_SERVICE" > "${LIVE_SERVICE}.tmp" && mv "${LIVE_SERVICE}.tmp" "$LIVE_SERVICE"
+    if [[ "$key" == IDS_* ]]; then
+      new_key="IDPS_${key#IDS_}"
+      echo "[~] Renaming $key → $new_key"
+      MIGRATED_ENVS["$new_key"]="$val"
+    else
+      MIGRATED_ENVS["$key"]="$val"
+    fi
+  done
+
+  # Replace env vars that exist in the template, track matched keys
+  declare -A MATCHED_KEYS
+  for key in "${!MIGRATED_ENVS[@]}"; do
+    val="${MIGRATED_ENVS[$key]}"
+    if grep -q "^[[:space:]]*Environment=\"\?${key}=" "$LIVE_SERVICE"; then
+      awk -v k="$key" -v v="$val" '{
+        if ($0 ~ "^[[:space:]]*Environment=\"?" k "=") print "Environment=\"" k "=" v "\""; else print
+      }' "$LIVE_SERVICE" > "${LIVE_SERVICE}.tmp" && mv "${LIVE_SERVICE}.tmp" "$LIVE_SERVICE"
+      MATCHED_KEYS["$key"]=1
+    fi
+  done
+
+  # Carry over any env vars not present in the template
+  for key in "${!MIGRATED_ENVS[@]}"; do
+    if [[ -z "${MATCHED_KEYS[$key]+x}" ]]; then
+      val="${MIGRATED_ENVS[$key]}"
+      echo "[~] Carrying over extra env var: $key"
+      awk -v k="$key" -v v="$val" '
+        /^[[:space:]]*Environment=/ { last=NR }
+        { lines[NR]=$0 }
+        END {
+          for (i=1; i<=NR; i++) {
+            print lines[i]
+            if (i==last) print "Environment=\"" k "=" v "\""
+          }
+        }' "$LIVE_SERVICE" > "${LIVE_SERVICE}.tmp" && mv "${LIVE_SERVICE}.tmp" "$LIVE_SERVICE"
+    fi
   done
 
   echo "[~] Migrated environment variables from old ids-agent.service"
@@ -229,21 +267,46 @@ elif [ -f "$LIVE_SERVICE" ]; then
   # Extract Environment= lines from the live service file into an associative array
   declare -A LIVE_ENVS
   while IFS= read -r line; do
-    # Match: Environment="KEY=VALUE"
-    if [[ "$line" =~ ^Environment=\"([^=]+)=(.*)\"$ ]]; then
-      LIVE_ENVS["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+    # Match: Environment=KEY=VALUE with optional whitespace and quotes
+    if [[ "$line" =~ ^[[:space:]]*Environment=\"?([^=]+)=(.*) ]]; then
+      key="${BASH_REMATCH[1]}"
+      val="${BASH_REMATCH[2]}"
+      val="${val%\"}"  # strip trailing quote if present
+      LIVE_ENVS["$key"]="$val"
     fi
   done < "$LIVE_SERVICE"
 
   # Start from the template and replace placeholder values with live ones
   cp "$TEMPLATE" "$LIVE_SERVICE"
 
+  # Replace env vars that exist in the template, track matched keys
+  declare -A MATCHED_LIVE_KEYS
   for key in "${!LIVE_ENVS[@]}"; do
     val="${LIVE_ENVS[$key]}"
-    # Use awk for safe replacement (no delimiter conflicts with token values)
-    awk -v k="$key" -v v="$val" '{
-      if ($0 ~ "^Environment=\"" k "=") print "Environment=\"" k "=" v "\""; else print
-    }' "$LIVE_SERVICE" > "${LIVE_SERVICE}.tmp" && mv "${LIVE_SERVICE}.tmp" "$LIVE_SERVICE"
+    if grep -q "^[[:space:]]*Environment=\"\?${key}=" "$LIVE_SERVICE"; then
+      # Use awk for safe replacement (no delimiter conflicts with token values)
+      awk -v k="$key" -v v="$val" '{
+        if ($0 ~ "^[[:space:]]*Environment=\"?" k "=") print "Environment=\"" k "=" v "\""; else print
+      }' "$LIVE_SERVICE" > "${LIVE_SERVICE}.tmp" && mv "${LIVE_SERVICE}.tmp" "$LIVE_SERVICE"
+      MATCHED_LIVE_KEYS["$key"]=1
+    fi
+  done
+
+  # Carry over any env vars not present in the template
+  for key in "${!LIVE_ENVS[@]}"; do
+    if [[ -z "${MATCHED_LIVE_KEYS[$key]+x}" ]]; then
+      val="${LIVE_ENVS[$key]}"
+      echo "[~] Carrying over extra env var: $key"
+      awk -v k="$key" -v v="$val" '
+        /^[[:space:]]*Environment=/ { last=NR }
+        { lines[NR]=$0 }
+        END {
+          for (i=1; i<=NR; i++) {
+            print lines[i]
+            if (i==last) print "Environment=\"" k "=" v "\""
+          }
+        }' "$LIVE_SERVICE" > "${LIVE_SERVICE}.tmp" && mv "${LIVE_SERVICE}.tmp" "$LIVE_SERVICE"
+    fi
   done
 
   echo "[~] Preserved existing environment variables from live service"
