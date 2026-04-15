@@ -16,6 +16,7 @@ import { analyzeThreat, generateWeeklyReport } from './ai/analyzer.js';
 import { executeAction, syncBannedIps } from './ai/actions.js';
 import { startApiServer, stopApiServer } from './api/server.js';
 import { startBot, stopBot } from './bot/commands.js';
+import { startHoneypot, stopHoneypot } from './honeypot/server.js';
 
 const cooldown = new CooldownManager(config.alertCooldownMs);
 const tailers = [];
@@ -111,6 +112,10 @@ async function shutdown(signal) {
   stopDailySummary();
   stopBot();
 
+  if (config.honeypot.enabled) {
+    await stopHoneypot();
+  }
+
   for (const tailer of tailers) {
     try {
       await tailer.stop();
@@ -176,13 +181,27 @@ async function main() {
     cooldown.cleanup();
   }, config.storeTtlMs);
 
+  // Honeypot (optional)
+  if (config.honeypot.enabled) {
+    await startHoneypot(threat => {
+      handleThreat(threat).catch(err => {
+        logger.error('Honeypot threat handler error', { error: err.message });
+      });
+    });
+  }
+
   // Startup notification
-  await sendMessage(
-    `\u{1F6E1}\uFE0F <b>IDPS Agent Online</b>\n\n` +
-    `Autonomous mode: <b>${config.autonomousMode ? 'ON' : 'OFF'}</b>\n` +
-    `Monitoring: ${config.monitoredService}\n` +
-    `API port: ${config.api.port}`
-  );
+  const startupLines = [
+    `\u{1F6E1}\uFE0F <b>IDPS Agent Online</b>`,
+    ``,
+    `Autonomous mode: <b>${config.autonomousMode ? 'ON' : 'OFF'}</b>`,
+    `Monitoring: ${config.monitoredService}`,
+    `API port: ${config.api.port}`,
+  ];
+  if (config.honeypot.enabled) {
+    startupLines.push(`Honeypot: <b>ON</b> (ports: ${config.honeypot.ports.join(', ')})`);
+  }
+  await sendMessage(startupLines.join('\n'));
 
   logger.info('IDPS Agent fully operational');
 

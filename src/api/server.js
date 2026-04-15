@@ -1,6 +1,8 @@
 import { createServer } from 'node:http';
 import config from '../../config.js';
 import logger from '../utils/logger.js';
+import honeypotStats from '../honeypot/stats.js';
+import { generateHtmlReport } from '../honeypot/report.js';
 
 let httpServer = null;
 
@@ -30,6 +32,46 @@ export function startApiServer(store) {
 
       res.writeHead(200);
       res.end(JSON.stringify(store.getStats()));
+      return;
+    }
+
+    // Honeypot endpoints (auth-protected)
+    if (url.pathname === '/honeypot/stats' && req.method === 'GET') {
+      const auth = req.headers.authorization;
+      if (!config.api.bearerToken || auth !== `Bearer ${config.api.bearerToken}`) {
+        res.writeHead(401);
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+
+      if (!config.honeypot.enabled) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'Honeypot not enabled' }));
+        return;
+      }
+
+      res.writeHead(200);
+      res.end(JSON.stringify(honeypotStats.getSummary()));
+      return;
+    }
+
+    if (url.pathname === '/honeypot/report' && req.method === 'GET') {
+      const auth = req.headers.authorization;
+      if (!config.api.bearerToken || auth !== `Bearer ${config.api.bearerToken}`) {
+        res.writeHead(401);
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+
+      if (!config.honeypot.enabled) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'Honeypot not enabled' }));
+        return;
+      }
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.writeHead(200);
+      res.end(generateHtmlReport());
       return;
     }
 

@@ -51,6 +51,17 @@ const config = {
 
   threatHistoryPath: process.env.THREAT_HISTORY_PATH || '/var/lib/idps-agent/threat-history.json',
   aiDecisionLogPath: process.env.AI_DECISION_LOG_PATH || '/var/log/idps-agent/ai-decisions.log',
+
+  honeypot: {
+    enabled: process.env.HONEYPOT_ENABLED === 'true',
+    ports: (process.env.HONEYPOT_PORTS || '2222,8080,3389,5900')
+      .split(',')
+      .map(p => parseInt(p.trim(), 10))
+      .filter(p => p > 0 && p < 65536),
+    dataPath: process.env.HONEYPOT_DATA_PATH || '/var/log/idps-agent/honeypot.json',
+    maxPayloadBytes: 1024,
+    retentionDays: 7,
+  },
 };
 
 export default config;

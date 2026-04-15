@@ -4,6 +4,7 @@ import { sendMessage, sendAgentSmithGif } from '../alerters/telegram.js';
 import { blockIp, unblockIp } from '../ai/actions.js';
 import { generateIpReport } from '../ai/analyzer.js';
 import { sanitizeIp } from '../utils/sanitize.js';
+import { generateTelegramReport } from '../honeypot/report.js';
 
 const API_BASE = `https://api.telegram.org/bot${config.telegram.botToken}`;
 
@@ -17,6 +18,7 @@ const BOT_COMMANDS = [
   { command: 'report', description: 'Generate AI analysis for an IP' },
   { command: 'blocked', description: 'List all currently blocked IPs' },
   { command: 'status', description: 'Show threat summary and system stats' },
+  { command: 'honeypot', description: 'Show honeypot stats summary' },
   { command: 'help', description: 'Show available commands' },
 ];
 
@@ -249,6 +251,16 @@ async function handleMessage(msg, store, memory) {
         break;
       }
 
+      case '/honeypot': {
+        if (!config.honeypot?.enabled) {
+          await sendMessage('\u26A0\uFE0F Honeypot is not enabled. Set <code>HONEYPOT_ENABLED=true</code> to activate.');
+          break;
+        }
+        const hpReport = generateTelegramReport();
+        await sendMessage(`\u{1F36F} <b>Honeypot Report</b>\n\n${hpReport}`);
+        break;
+      }
+
       case '/help':
         await sendMessage(
           `\u{1F6E1}\uFE0F <b>IDPS Agent Commands</b>\n\n` +
@@ -258,6 +270,7 @@ async function handleMessage(msg, store, memory) {
           `/report &lt;IP&gt; \u2014 AI deep-dive on IP activity\n` +
           `/blocked \u2014 List currently blocked IPs\n` +
           `/status \u2014 Current threat summary\n` +
+          `/honeypot \u2014 Honeypot stats summary\n` +
           `/help \u2014 Show this message`
         );
         break;
