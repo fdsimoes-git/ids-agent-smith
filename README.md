@@ -66,6 +66,8 @@ sudo nano /etc/systemd/system/ids-agent.service
 | `TELEGRAM_BOT_TOKEN` | Yes | Telegram Bot API token |
 | `TELEGRAM_CHAT_ID` | Yes | Telegram chat ID for alerts |
 | `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude AI |
+| `ANTHROPIC_MODEL` | No | Claude model for AI analysis (default: `claude-sonnet-4-20250514`) |
+| `ANTHROPIC_DECISION_MODEL` | No | Claude model for autonomous-mode threat decisions (default: `claude-haiku-4-5-20251001`) |
 | `AUTONOMOUS_MODE` | No | `true` to enable auto-blocking (default: `false`) |
 | `MONITORED_SERVICE` | Yes | systemd service name of your app |
 | `API_BEARER_TOKEN` | Yes | Bearer token for `/stats` endpoint |
