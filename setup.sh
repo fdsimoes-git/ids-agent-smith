@@ -92,6 +92,11 @@ echo "[+] Granting systemd journal access"
 usermod -aG systemd-journal "$USER" 2>/dev/null || true
 
 # 8. Configure sudoers for autonomous actions (fail2ban + iptables)
+# Migration: remove old ids-agent sudoers file if it exists
+if [ -f /etc/sudoers.d/ids-agent ]; then
+  echo "[~] Removing old /etc/sudoers.d/ids-agent sudoers file"
+  rm -f /etc/sudoers.d/ids-agent
+fi
 echo "[+] Configuring sudoers for IDPS actions"
 cat > /etc/sudoers.d/idps-agent << 'SUDOERS'
 # IDPS Agent — allow blocking/unblocking IPs without password
@@ -192,9 +197,35 @@ echo ""
 # 10. Install systemd service (preserve existing env vars)
 echo "[+] Installing systemd service"
 LIVE_SERVICE="/etc/systemd/system/idps-agent.service"
+OLD_SERVICE="/etc/systemd/system/ids-agent.service"
 TEMPLATE="$SCRIPT_DIR/idps-agent.service"
 
-if [ -f "$LIVE_SERVICE" ]; then
+# Migration: if old ids-agent.service exists but new idps-agent.service does not,
+# migrate Environment= lines from the old service before installing the new one
+if [ ! -f "$LIVE_SERVICE" ] && [ -f "$OLD_SERVICE" ]; then
+  echo "[~] Detected old ids-agent.service — migrating environment variables"
+  cp "$TEMPLATE" "$LIVE_SERVICE"
+
+  declare -A OLD_ENVS
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^Environment=\"([^=]+)=(.*)\"$ ]]; then
+      OLD_ENVS["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+    fi
+  done < "$OLD_SERVICE"
+
+  for key in "${!OLD_ENVS[@]}"; do
+    val="${OLD_ENVS[$key]}"
+    awk -v k="$key" -v v="$val" '{
+      if ($0 ~ "^Environment=\"" k "=") print "Environment=\"" k "=" v "\""; else print
+    }' "$LIVE_SERVICE" > "${LIVE_SERVICE}.tmp" && mv "${LIVE_SERVICE}.tmp" "$LIVE_SERVICE"
+  done
+
+  echo "[~] Migrated environment variables from old ids-agent.service"
+  echo "[~] Stopping and disabling old ids-agent service"
+  systemctl stop ids-agent 2>/dev/null || true
+  systemctl disable ids-agent 2>/dev/null || true
+
+elif [ -f "$LIVE_SERVICE" ]; then
   # Extract Environment= lines from the live service file into an associative array
   declare -A LIVE_ENVS
   while IFS= read -r line; do
