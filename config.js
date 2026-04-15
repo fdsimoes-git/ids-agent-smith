@@ -54,10 +54,12 @@ const config = {
 
   honeypot: (() => {
     const enabled = process.env.HONEYPOT_ENABLED === 'true';
-    const ports = (process.env.HONEYPOT_PORTS || '2222,8080,3389,5900')
-      .split(',')
-      .map(p => parseInt(p.trim(), 10))
-      .filter(p => p > 0 && p < 65536);
+    const ports = [...new Set(
+      (process.env.HONEYPOT_PORTS || '2222,8080,3389,5900')
+        .split(',')
+        .map(p => parseInt(p.trim(), 10))
+        .filter(p => p > 0 && p < 65536)
+    )];
     if (enabled && ports.length === 0) {
       throw new Error('HONEYPOT_ENABLED=true but HONEYPOT_PORTS has no valid ports');
     }

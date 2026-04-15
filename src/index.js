@@ -169,6 +169,15 @@ async function main() {
 
   journalTailer.start();
 
+  // Honeypot (optional) — load stats before API so /honeypot/stats is ready
+  if (config.honeypot.enabled) {
+    await startHoneypot(threat => {
+      handleThreat(threat).catch(err => {
+        logger.error('Honeypot threat handler error', { error: err.message });
+      });
+    });
+  }
+
   // HTTP API
   startApiServer(store);
 
@@ -185,15 +194,6 @@ async function main() {
     cooldown.cleanup();
   }, config.storeTtlMs);
 
-  // Honeypot (optional)
-  if (config.honeypot.enabled) {
-    await startHoneypot(threat => {
-      handleThreat(threat).catch(err => {
-        logger.error('Honeypot threat handler error', { error: err.message });
-      });
-    });
-  }
-
   // Startup notification
   const startupLines = [
     `\u{1F6E1}\uFE0F <b>IDPS Agent Online</b>`,
@@ -203,7 +203,12 @@ async function main() {
     `API port: ${config.api.port}`,
   ];
   if (config.honeypot.enabled) {
-    startupLines.push(`Honeypot: <b>ON</b> (ports: ${config.honeypot.ports.join(', ')})`);
+    const ports = config.honeypot.ports;
+    const maxShow = 10;
+    const portStr = ports.length <= maxShow
+      ? ports.join(', ')
+      : ports.slice(0, maxShow).join(', ') + ` + ${ports.length - maxShow} more`;
+    startupLines.push(`Honeypot: <b>ON</b> (ports: ${portStr})`);
   }
   await sendMessage(startupLines.join('\n'));
 

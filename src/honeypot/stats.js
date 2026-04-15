@@ -48,7 +48,11 @@ class HoneypotStats {
 
   trimOld() {
     const cutoff = Date.now() - config.honeypot.retentionDays * 86400_000;
+    const before = this.connections.length;
     this.connections = this.connections.filter(c => new Date(c.timestamp).getTime() > cutoff);
+    if (this.connections.length < before) {
+      this.dirty = true;
+    }
   }
 
   getAll() {
