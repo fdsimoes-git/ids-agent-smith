@@ -24,6 +24,7 @@ IDPS Agent monitors your server's log files in real-time, detects threats using 
 - **Human-in-the-loop**: Telegram commands for manual blocking, whitelisting, reports
 - **Daily summaries** at 08:00 AM, **weekly AI reports** on Mondays
 - **HTTP API**: `/health` and `/stats` endpoints
+- **Honeypot** (optional): decoy port listeners to catch attackers probing your server, with stats and data visualization
 - **Lightweight**: single process, in-memory store, minimal dependencies
 
 ## Requirements
@@ -73,6 +74,9 @@ sudo nano /etc/systemd/system/idps-agent.service
 | `API_BEARER_TOKEN` | Yes | Bearer token for `/stats` endpoint |
 | `ALLOWED_COUNTRIES` | No | Comma-separated country codes (default: `BR,US`) |
 | `IDPS_PORT` | No | HTTP API port (default: `3001`) |
+| `HONEYPOT_ENABLED` | No | `true` to enable honeypot decoy ports (default: `false`) |
+| `HONEYPOT_PORTS` | No | Comma-separated decoy ports (default: `2222,8080,3389,5900`) |
+| `HONEYPOT_DATA_PATH` | No | Path for honeypot data file (default: `/var/log/idps-agent/honeypot.json`) |
 
 ## Nginx Log Format
 
@@ -129,6 +133,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:3001/stats
 | `/whitelist <IP>` | Suppress future alerts for an IP |
 | `/report <IP>` | AI deep-dive report on IP activity |
 | `/status` | Current threat summary and stats |
+| `/honeypot` | Honeypot stats summary |
 | `/help` | Show available commands |
 
 ## Detection Rules
@@ -146,6 +151,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:3001/stats
 | sqli-attempt | SQL injection patterns in URL | CRITICAL |
 | xss-attempt | XSS patterns in URL | HIGH |
 | post-ban-access | Recently-unbanned IP accessing server again | MEDIUM |
+| honeypot | Connection to a decoy honeypot port | HIGH |
 
 ## AI Integration
 
@@ -162,6 +168,54 @@ When a HIGH or CRITICAL threat is detected, Claude AI:
 
 AI decisions are logged to `/var/log/idps-agent/ai-decisions.log`.
 
+## Honeypot
+
+An optional integrated honeypot that listens on configurable decoy ports to detect attackers actively probing your server.
+
+### How it works
+
+1. TCP servers listen on decoy ports (default: 2222, 8080, 3389, 5900)
+2. Any connection is logged with the attacker's IP, timestamp, and captured payload data
+3. Each connection generates a HIGH-severity `honeypot` threat that flows through the standard detection pipeline (alerts, AI analysis, autonomous blocking)
+4. Stats are persisted to disk with a 7-day rolling window
+
+### Enabling
+
+```bash
+# In your systemd service environment
+HONEYPOT_ENABLED=true
+HONEYPOT_PORTS=2222,8080,3389,5900  # optional, these are the defaults
+```
+
+### Data Visualization
+
+- **HTML report**: `GET /honeypot/report` — full visual report with bar charts for top attacker IPs, most probed ports, hourly connection distribution, and recent payloads
+- **JSON stats**: `GET /honeypot/stats` — raw stats data for programmatic access
+- **Telegram**: `/honeypot` command — inline summary with top attackers and ports
+
+Both HTTP endpoints require the same `Authorization: Bearer` token as `/stats`.
+
+```bash
+# View HTML report in browser
+curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:3001/honeypot/report > report.html
+
+# Get JSON stats
+curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:3001/honeypot/stats
+```
+
+### Port Selection Tips
+
+Choose ports that attackers commonly scan but your server doesn't use:
+- `2222` — alternate SSH
+- `8080` — HTTP proxy / alternate web
+- `3389` — RDP (Windows Remote Desktop)
+- `5900` — VNC
+- `6379` — Redis
+- `27017` — MongoDB
+- `3306` — MySQL
+
+Avoid ports used by your actual services. Ports below 1024 require `CAP_NET_BIND_SERVICE` or root.
+
 ## Architecture
 
 ```
@@ -172,6 +226,7 @@ src/
 ├── detectors/            # Detection rules (one per file)
 ├── alerters/             # Telegram alerts + daily summary
 ├── ai/                   # Claude AI analyzer, autonomous actions, threat memory
+├── honeypot/             # Optional decoy port listeners, stats, and reports
 ├── api/                  # HTTP health/stats endpoints
 ├── bot/                  # Telegram bot command handler
 └── utils/                # Logger, sanitizer, file tailer, cooldown manager, origin identifier
