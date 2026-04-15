@@ -7,6 +7,7 @@ const config = {
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY || '',
     model: 'claude-sonnet-4-20250514',
+    decisionModel: 'claude-haiku-4-5-20251001',
     maxTokens: 1024,
   },
 
