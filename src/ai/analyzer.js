@@ -74,7 +74,7 @@ export async function analyzeThreat(threat, recentHistory) {
 
   try {
     const response = await client.messages.create({
-      model: config.anthropic.model,
+      model: config.autonomousMode ? config.anthropic.decisionModel : config.anthropic.model,
       max_tokens: config.anthropic.maxTokens,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: prompt }],
