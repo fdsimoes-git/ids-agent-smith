@@ -19,6 +19,10 @@ class HoneypotStats {
       if (Array.isArray(data.connections)) {
         this.connections = data.connections;
         this.trimOld();
+        if (this.connections.length > config.honeypot.maxRecords) {
+          this.connections = this.connections.slice(-config.honeypot.maxRecords);
+          this.dirty = true;
+        }
         logger.info(`Honeypot stats loaded: ${this.connections.length} records`);
       }
     } catch (err) {
@@ -37,6 +41,10 @@ class HoneypotStats {
   }
 
   record(event) {
+    if (this.connections.length >= config.honeypot.maxRecords) {
+      this.connections.splice(0, Math.ceil(config.honeypot.maxRecords * 0.1));
+    }
+
     this.connections.push({
       ip: event.ip,
       port: event.port,

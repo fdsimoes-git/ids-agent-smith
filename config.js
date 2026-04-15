@@ -68,6 +68,8 @@ const config = {
       ports,
       dataPath: process.env.HONEYPOT_DATA_PATH || '/var/log/idps-agent/honeypot.json',
       maxPayloadBytes: 1024,
+      maxConnectionMs: 30_000,
+      maxRecords: 10_000,
       retentionDays: 7,
     };
   })(),

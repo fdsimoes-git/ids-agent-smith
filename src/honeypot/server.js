@@ -51,12 +51,20 @@ function createDecoyServer(port, onThreat) {
       socket.setTimeout(10_000);
       socket.on('timeout', () => socket.destroy());
 
+      // Absolute max connection lifetime — prevents slowloris-style attacks
+      const lifetimeTimer = setTimeout(() => socket.destroy(), config.honeypot.maxConnectionMs);
+      socket.on('close', () => clearTimeout(lifetimeTimer));
+
       socket.on('data', chunk => {
         if (payloadBytes < config.honeypot.maxPayloadBytes) {
           const remaining = config.honeypot.maxPayloadBytes - payloadBytes;
           const slice = remaining < chunk.length ? chunk.subarray(0, remaining) : chunk;
           payloadBuffers.push(slice);
           payloadBytes += slice.length;
+        }
+
+        if (payloadBytes >= config.honeypot.maxPayloadBytes) {
+          socket.destroy();
         }
       });
 
