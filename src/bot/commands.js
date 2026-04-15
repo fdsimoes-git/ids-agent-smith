@@ -225,7 +225,7 @@ async function handleMessage(msg, store, memory) {
       case '/status': {
         const stats = store.getStats();
         const lines = [
-          `\u{1F4CA} <b>IDS Agent Status</b>`,
+          `\u{1F4CA} <b>IDPS Agent Status</b>`,
           ``,
           `<b>Uptime:</b> ${formatUptime(stats.uptime)}`,
           `<b>Events processed:</b> ${stats.totalEvents}`,
@@ -251,7 +251,7 @@ async function handleMessage(msg, store, memory) {
 
       case '/help':
         await sendMessage(
-          `\u{1F6E1}\uFE0F <b>IDS Agent Commands</b>\n\n` +
+          `\u{1F6E1}\uFE0F <b>IDPS Agent Commands</b>\n\n` +
           `/block_ip &lt;IP&gt; \u2014 Block IP (fail2ban + iptables + nginx)\n` +
           `/unblock_ip &lt;IP&gt; \u2014 Unblock IP from all layers\n` +
           `/whitelist &lt;IP&gt; \u2014 Suppress alerts for IP\n` +

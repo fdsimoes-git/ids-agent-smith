@@ -39,7 +39,7 @@ async function generateAndSend(store, memory) {
   const total = events.length;
 
   const lines = [
-    `\u{1F4CA} <b>IDS Agent \u2014 Daily Summary (${date})</b>`,
+    `\u{1F4CA} <b>IDPS Agent \u2014 Daily Summary (${date})</b>`,
     ``,
     `<b>Threats detected:</b> ${total}`,
     `\u251C CRITICAL: ${bySeverity.CRITICAL}`,

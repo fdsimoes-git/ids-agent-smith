@@ -1,13 +1,13 @@
 [Unit]
-Description=IDS Agent - Intrusion Detection & Alert System
+Description=IDPS Agent - Intrusion Detection & Prevention System
 After=network.target nginx.service fail2ban.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=ids-agent
-Group=ids-agent
-WorkingDirectory=/opt/ids-agent
+User=idps-agent
+Group=idps-agent
+WorkingDirectory=/opt/idps-agent
 ExecStart=/usr/bin/node src/index.js
 Restart=on-failure
 RestartSec=5
@@ -22,12 +22,12 @@ Environment="AUTONOMOUS_MODE=false"
 Environment="MONITORED_SERVICE=your-app-service-name"
 Environment="API_BEARER_TOKEN=your_stats_endpoint_token"
 Environment="ALLOWED_COUNTRIES=BR,US"
-Environment="IDS_PORT=3001"
+Environment="IDPS_PORT=3001"
 
 # Security hardening
 NoNewPrivileges=false
 ProtectSystem=strict
-ReadWritePaths=/var/log/ids-agent /var/lib/ids-agent /etc/nginx/blocked-ips.conf
+ReadWritePaths=/var/log/idps-agent /var/lib/idps-agent /etc/nginx/blocked-ips.conf
 # Add only paths that exist on your server (missing paths cause startup failure).
 # setup.sh will automatically uncomment paths for services present on this host.
 ReadOnlyPaths=/var/log/auth.log
@@ -41,7 +41,7 @@ ReadOnlyPaths=/var/log/auth.log
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=ids-agent
+SyslogIdentifier=idps-agent
 
 [Install]
 WantedBy=multi-user.target
