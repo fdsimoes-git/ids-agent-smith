@@ -9,6 +9,7 @@ class HoneypotStats {
     this.dirty = false;
     this.saveTimer = null;
     this.isSaving = false;
+    this.savePromise = null;
   }
 
   async load() {
@@ -30,6 +31,7 @@ class HoneypotStats {
   startAutoSave() {
     if (this.saveTimer) clearInterval(this.saveTimer);
     this.saveTimer = setInterval(() => {
+      this.trimOld();
       if (this.dirty && !this.isSaving) this.save();
     }, 60_000);
   }
@@ -42,7 +44,6 @@ class HoneypotStats {
       payload: event.payload || '',
     });
     this.dirty = true;
-    this.trimOld();
   }
 
   trimOld() {
@@ -105,26 +106,31 @@ class HoneypotStats {
   }
 
   async save() {
-    if (this.isSaving) return;
+    if (this.isSaving) return this.savePromise;
     this.isSaving = true;
-    try {
-      const dir = dirname(config.honeypot.dataPath);
-      await mkdir(dir, { recursive: true }).catch(() => {});
-      await writeFile(
-        config.honeypot.dataPath,
-        JSON.stringify({ connections: this.connections }, null, 2),
-        'utf8'
-      );
-      this.dirty = false;
-    } catch (err) {
-      logger.error('Failed to save honeypot stats', { error: err.message });
-    } finally {
-      this.isSaving = false;
-    }
+    this.savePromise = (async () => {
+      try {
+        const dir = dirname(config.honeypot.dataPath);
+        await mkdir(dir, { recursive: true }).catch(() => {});
+        await writeFile(
+          config.honeypot.dataPath,
+          JSON.stringify({ connections: this.connections }, null, 2),
+          'utf8'
+        );
+        this.dirty = false;
+      } catch (err) {
+        logger.error('Failed to save honeypot stats', { error: err.message });
+      } finally {
+        this.isSaving = false;
+        this.savePromise = null;
+      }
+    })();
+    return this.savePromise;
   }
 
   async stop() {
     if (this.saveTimer) clearInterval(this.saveTimer);
+    if (this.savePromise) await this.savePromise;
     if (this.dirty) await this.save();
   }
 }

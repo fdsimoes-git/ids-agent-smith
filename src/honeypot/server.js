@@ -10,7 +10,6 @@ export async function startHoneypot(onThreat) {
   if (!config.honeypot.enabled) return;
 
   await honeypotStats.load();
-  honeypotStats.startAutoSave();
 
   const startedPorts = [];
 
@@ -25,6 +24,7 @@ export async function startHoneypot(onThreat) {
   }
 
   if (startedPorts.length > 0) {
+    honeypotStats.startAutoSave();
     logger.info(`Honeypot started on ports: ${startedPorts.join(', ')}`);
   } else {
     logger.warn('Honeypot: no ports could be started');
@@ -41,14 +41,18 @@ function createDecoyServer(port, onThreat) {
       }
 
       const timestamp = new Date().toISOString();
-      let payload = '';
+      const payloadBuffers = [];
+      let payloadBytes = 0;
 
       socket.setTimeout(10_000);
       socket.on('timeout', () => socket.destroy());
 
       socket.on('data', chunk => {
-        if (payload.length < config.honeypot.maxPayloadBytes) {
-          payload += chunk.toString('utf8', 0, config.honeypot.maxPayloadBytes - payload.length);
+        if (payloadBytes < config.honeypot.maxPayloadBytes) {
+          const remaining = config.honeypot.maxPayloadBytes - payloadBytes;
+          const slice = remaining < chunk.length ? chunk.subarray(0, remaining) : chunk;
+          payloadBuffers.push(slice);
+          payloadBytes += slice.length;
         }
       });
 
@@ -61,7 +65,8 @@ function createDecoyServer(port, onThreat) {
         if (finalized) return;
         finalized = true;
 
-        const safePayload = payload.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').slice(0, config.honeypot.maxPayloadBytes);
+        const rawPayload = payloadBuffers.length > 0 ? Buffer.concat(payloadBuffers).toString('utf8') : '';
+        const safePayload = rawPayload.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
 
         honeypotStats.record({
           ip: remoteIp,
