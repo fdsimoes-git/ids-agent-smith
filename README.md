@@ -1,16 +1,16 @@
 <p align="center">
-  <img src="assets/logo.png" alt="IDS Agent" width="500">
+  <img src="assets/logo.png" alt="IDPS Agent" width="500">
 </p>
 
-# IDS Agent
+# IDPS Agent
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](LICENSE)
 
-Intrusion Detection & Alert System for Node.js applications on GCP, with AI-powered threat analysis.
+Intrusion Detection & Prevention System for Node.js applications on GCP, with AI-powered threat analysis.
 
 ## Overview
 
-IDS Agent monitors your server's log files in real-time, detects threats using configurable rules, sends alerts via Telegram, and optionally uses Claude AI to analyze threats and take autonomous defensive actions.
+IDPS Agent monitors your server's log files in real-time, detects threats using configurable rules, sends alerts via Telegram, and optionally uses Claude AI to analyze threats and take autonomous defensive actions.
 
 **Designed for:** GCP e2-micro instances running Node.js behind Nginx + Cloudflare.
 
@@ -38,16 +38,16 @@ IDS Agent monitors your server's log files in real-time, detects threats using c
 ## Quick Setup
 
 ```bash
-# Clone the repo
-git clone <your-repo-url> /opt/ids-agent
-cd /opt/ids-agent
+# Clone the repo (don't clone into /opt/idps-agent — setup.sh installs there)
+git clone <your-repo-url> ~/idps-agent
+cd ~/idps-agent
 
 # Run setup (as root)
 sudo bash setup.sh
 ```
 
 The setup script will:
-1. Create a `ids-agent` system user
+1. Create a `idps-agent` system user
 2. Set up log and data directories
 3. Install Node.js dependencies
 4. Configure file permissions and sudoers
@@ -58,7 +58,7 @@ The setup script will:
 All configuration is via **environment variables** set in the systemd service file:
 
 ```bash
-sudo nano /etc/systemd/system/ids-agent.service
+sudo nano /etc/systemd/system/idps-agent.service
 ```
 
 | Variable | Required | Description |
@@ -72,11 +72,11 @@ sudo nano /etc/systemd/system/ids-agent.service
 | `MONITORED_SERVICE` | Yes | systemd service name of your app |
 | `API_BEARER_TOKEN` | Yes | Bearer token for `/stats` endpoint |
 | `ALLOWED_COUNTRIES` | No | Comma-separated country codes (default: `BR,US`) |
-| `IDS_PORT` | No | HTTP API port (default: `3001`) |
+| `IDPS_PORT` | No | HTTP API port (default: `3001`) |
 
 ## Nginx Log Format
 
-IDS Agent expects the real client IP (from Cloudflare) as the first field in Nginx access logs. Add this to your `nginx.conf`:
+IDPS Agent expects the real client IP (from Cloudflare) as the first field in Nginx access logs. Add this to your `nginx.conf`:
 
 ```nginx
 http {
@@ -90,7 +90,7 @@ http {
 
 ### IP Blocking via Nginx
 
-IDS Agent automatically manages `/etc/nginx/blocked-ips.conf` to block banned IPs at the HTTP level (essential when behind Cloudflare, since iptables only sees Cloudflare's IPs for web traffic). Add this include to each nginx `server` block:
+IDPS Agent automatically manages `/etc/nginx/blocked-ips.conf` to block banned IPs at the HTTP level (essential when behind Cloudflare, since iptables only sees Cloudflare's IPs for web traffic). Add this include to each nginx `server` block:
 
 ```nginx
 server {
@@ -103,16 +103,16 @@ server {
 
 ```bash
 # Start
-sudo systemctl start ids-agent
+sudo systemctl start idps-agent
 
 # Enable on boot
-sudo systemctl enable ids-agent
+sudo systemctl enable idps-agent
 
 # Check status
-sudo systemctl status ids-agent
+sudo systemctl status idps-agent
 
 # View logs
-sudo journalctl -u ids-agent -f
+sudo journalctl -u idps-agent -f
 
 # Health check
 curl http://localhost:3001/health
@@ -160,7 +160,7 @@ When a HIGH or CRITICAL threat is detected, Claude AI:
 
 **Human-in-the-loop** (`AUTONOMOUS_MODE=false`): AI suggests actions, operator confirms via Telegram commands.
 
-AI decisions are logged to `/var/log/ids-agent/ai-decisions.log`.
+AI decisions are logged to `/var/log/idps-agent/ai-decisions.log`.
 
 ## Architecture
 
@@ -180,7 +180,7 @@ src/
 ## Deployment Recommendations
 
 1. Start with `AUTONOMOUS_MODE=false` for the first few days
-2. Review AI decisions in `/var/log/ids-agent/ai-decisions.log`
+2. Review AI decisions in `/var/log/idps-agent/ai-decisions.log`
 3. Use `/report <IP>` on suspicious IPs to validate AI accuracy
 4. Enable autonomous mode once confident in the AI's judgement
 5. Monitor memory usage via `/stats` — the in-memory store is cleaned every 5 minutes
@@ -190,6 +190,6 @@ src/
 | File | Purpose |
 |---|---|
 | `config.js` | Central config (reads environment variables) |
-| `ids-agent.service` | systemd service template |
+| `idps-agent.service` | systemd service template |
 | `setup.sh` | Automated setup for Ubuntu 24 |
 | `.gitignore` | Excludes secrets and logs |

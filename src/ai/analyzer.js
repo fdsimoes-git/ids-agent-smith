@@ -13,7 +13,7 @@ if (config.anthropic.apiKey) {
   }
 }
 
-const SYSTEM_PROMPT = `You are a cybersecurity AI agent analyzing intrusion detection alerts for a Node.js web application hosted on a GCP e2-micro instance behind Nginx and Cloudflare.
+const SYSTEM_PROMPT = `You are a cybersecurity AI agent analyzing intrusion detection and prevention alerts for a Node.js web application hosted on a GCP e2-micro instance behind Nginx and Cloudflare.
 
 Analyze each threat and provide:
 1. Whether it is a real threat or a false positive
@@ -41,7 +41,7 @@ export async function analyzeThreat(threat, recentHistory) {
   if (!client) return null;
 
   const lines = [
-    `Analyze this IDS alert:`,
+    `Analyze this IDPS alert:`,
     ``,
     `Rule: ${threat.rule}`,
     `Source IP: ${threat.ip}`,
@@ -115,7 +115,7 @@ export async function generateWeeklyReport(weekHistory) {
       system: 'You are a cybersecurity analyst generating a concise weekly threat report. Format using Telegram HTML tags: <b>bold</b>, <i>italic</i>, <code>code</code>, <pre>block</pre>. Do NOT use markdown. Do NOT use unescaped &, < or > outside of tags.',
       messages: [{
         role: 'user',
-        content: `Weekly IDS report from ${weekHistory.length} events over the last 7 days:\n\n${JSON.stringify(weekHistory.slice(-200), null, 2)}\n\nCover: attack trends, top offenders, pattern analysis, and infrastructure recommendations.`,
+        content: `Weekly IDPS report from ${weekHistory.length} events over the last 7 days:\n\n${JSON.stringify(weekHistory.slice(-200), null, 2)}\n\nCover: attack trends, top offenders, pattern analysis, and infrastructure recommendations.`,
       }],
     });
 

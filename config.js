@@ -16,7 +16,7 @@ const config = {
   monitoredService: process.env.MONITORED_SERVICE || 'my-app',
 
   api: {
-    port: parseInt(process.env.IDS_PORT, 10) || 3001,
+    port: parseInt(process.env.IDPS_PORT || process.env.IDS_PORT, 10) || 3001,
     bearerToken: process.env.API_BEARER_TOKEN || '',
   },
 
@@ -49,8 +49,8 @@ const config = {
 
   dailySummaryHour: 8, // 08:00 AM
 
-  threatHistoryPath: process.env.THREAT_HISTORY_PATH || '/var/log/ids-agent/threat-history.json',
-  aiDecisionLogPath: process.env.AI_DECISION_LOG_PATH || '/var/log/ids-agent/ai-decisions.log',
+  threatHistoryPath: process.env.THREAT_HISTORY_PATH || '/var/lib/idps-agent/threat-history.json',
+  aiDecisionLogPath: process.env.AI_DECISION_LOG_PATH || '/var/log/idps-agent/ai-decisions.log',
 };
 
 export default config;

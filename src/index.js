@@ -123,7 +123,7 @@ async function shutdown(signal) {
   store.stop();
   await memory.stop();
 
-  await sendMessage('\u{1F534} <b>IDS Agent Offline</b>').catch(() => {});
+  await sendMessage('\u{1F534} <b>IDPS Agent Offline</b>').catch(() => {});
   logger.info('Shutdown complete');
   process.exit(0);
 }
@@ -131,7 +131,7 @@ async function shutdown(signal) {
 // --- Main startup ---
 
 async function main() {
-  logger.info('IDS Agent starting', {
+  logger.info('IDPS Agent starting', {
     autonomousMode: config.autonomousMode,
     monitoredService: config.monitoredService,
     allowedCountries: config.allowedCountries,
@@ -178,13 +178,13 @@ async function main() {
 
   // Startup notification
   await sendMessage(
-    `\u{1F6E1}\uFE0F <b>IDS Agent Online</b>\n\n` +
+    `\u{1F6E1}\uFE0F <b>IDPS Agent Online</b>\n\n` +
     `Autonomous mode: <b>${config.autonomousMode ? 'ON' : 'OFF'}</b>\n` +
     `Monitoring: ${config.monitoredService}\n` +
     `API port: ${config.api.port}`
   );
 
-  logger.info('IDS Agent fully operational');
+  logger.info('IDPS Agent fully operational');
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));

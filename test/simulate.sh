@@ -121,4 +121,4 @@ case "$scenario" in
     ;;
 esac
 
-echo "Done. Check IDS Agent output for detections."
+echo "Done. Check IDPS Agent output for detections."

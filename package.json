@@ -1,7 +1,7 @@
 {
-  "name": "ids-agent",
+  "name": "idps-agent",
   "version": "1.0.0",
-  "description": "Intrusion Detection & Alert System with AI-powered threat analysis",
+  "description": "Intrusion Detection & Prevention System with AI-powered threat analysis",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
@@ -10,7 +10,7 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "keywords": ["ids", "intrusion-detection", "security", "monitoring"],
+  "keywords": ["idps", "intrusion-detection-prevention", "security", "monitoring"],
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
