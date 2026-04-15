@@ -276,13 +276,26 @@ elif [ -f "$LIVE_SERVICE" ]; then
     fi
   done < "$LIVE_SERVICE"
 
+  # Map IDS_* keys to IDPS_* equivalents (e.g. IDS_PORT → IDPS_PORT)
+  declare -A MIGRATED_LIVE_ENVS
+  for key in "${!LIVE_ENVS[@]}"; do
+    val="${LIVE_ENVS[$key]}"
+    if [[ "$key" == IDS_* ]]; then
+      new_key="IDPS_${key#IDS_}"
+      echo "[~] Renaming $key → $new_key"
+      MIGRATED_LIVE_ENVS["$new_key"]="$val"
+    else
+      MIGRATED_LIVE_ENVS["$key"]="$val"
+    fi
+  done
+
   # Start from the template and replace placeholder values with live ones
   cp "$TEMPLATE" "$LIVE_SERVICE"
 
   # Replace env vars that exist in the template, track matched keys
   declare -A MATCHED_LIVE_KEYS
-  for key in "${!LIVE_ENVS[@]}"; do
-    val="${LIVE_ENVS[$key]}"
+  for key in "${!MIGRATED_LIVE_ENVS[@]}"; do
+    val="${MIGRATED_LIVE_ENVS[$key]}"
     if grep -q "^[[:space:]]*Environment=\"\?${key}=" "$LIVE_SERVICE"; then
       # Use awk for safe replacement (no delimiter conflicts with token values)
       awk -v k="$key" -v v="$val" '{
@@ -293,9 +306,9 @@ elif [ -f "$LIVE_SERVICE" ]; then
   done
 
   # Carry over any env vars not present in the template
-  for key in "${!LIVE_ENVS[@]}"; do
+  for key in "${!MIGRATED_LIVE_ENVS[@]}"; do
     if [[ -z "${MATCHED_LIVE_KEYS[$key]+x}" ]]; then
-      val="${LIVE_ENVS[$key]}"
+      val="${MIGRATED_LIVE_ENVS[$key]}"
       echo "[~] Carrying over extra env var: $key"
       awk -v k="$key" -v v="$val" '
         /^[[:space:]]*Environment=/ { last=NR }
