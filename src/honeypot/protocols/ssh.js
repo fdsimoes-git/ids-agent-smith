@@ -111,6 +111,7 @@ export function handleSshConnection(socket, port, onThreat) {
       banner: SSH_BANNER.trim(),
       clientVersion: clientVersion || null,
       credentials: credentials.length > 0 ? credentials : null,
+      source: 'ssh',
     });
 
     const detailParts = [`SSH connection to honeypot port ${port}`];

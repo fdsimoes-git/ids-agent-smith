@@ -16,6 +16,17 @@ function hashPassword(password) {
 
 const ROTATE_COOLDOWN_MS = 60 * 60 * 1000;
 
+const HTTP_METHOD_PREFIX = /^(GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH|TRACE|CONNECT) /;
+
+function inferSource(conn) {
+  if (conn.source === 'ssh' || conn.source === 'http' || conn.source === 'tcp') {
+    return conn.source;
+  }
+  if (conn.banner || conn.clientVersion || conn.credentials) return 'ssh';
+  if (typeof conn.payload === 'string' && HTTP_METHOD_PREFIX.test(conn.payload)) return 'http';
+  return 'tcp';
+}
+
 class HoneypotStats {
   constructor() {
     this.connections = [];
@@ -67,6 +78,7 @@ class HoneypotStats {
     };
     if (event.username) entry.username = event.username;
     if (event.passwordHash) entry.passwordHash = event.passwordHash;
+    if (event.source) entry.source = event.source;
 
     // Enriched SSH fields (only present for SSH honeypot ports)
     if (event.banner) entry.banner = event.banner;
@@ -118,11 +130,25 @@ class HoneypotStats {
     const byHour = Object.create(null);
     const byCountry = Object.create(null);
     const ipGeo = Object.create(null);
+    const ipPorts = Object.create(null);
+    const ipPayloads = Object.create(null);
+    const vectorBreakdown = { ssh: 0, http: 0, tcp: 0 };
     const isoAlpha2 = /^[A-Z]{2}$/;
 
     for (const conn of recent) {
       byIp[conn.ip] = (byIp[conn.ip] || 0) + 1;
       byPort[conn.port] = (byPort[conn.port] || 0) + 1;
+
+      const source = inferSource(conn);
+      if (source in vectorBreakdown) vectorBreakdown[source]++;
+
+      // Track ports and latest payload per IP for expandable detail rows
+      if (!ipPorts[conn.ip]) ipPorts[conn.ip] = Object.create(null);
+      ipPorts[conn.ip][conn.port] = (ipPorts[conn.ip][conn.port] || 0) + 1;
+      if (conn.payload) {
+        const list = ipPayloads[conn.ip] || (ipPayloads[conn.ip] = []);
+        if (list.length < 3) list.push(conn.payload);
+      }
 
       const rawCode = conn.geo?.countryCode;
       if (typeof rawCode === 'string' && isoAlpha2.test(rawCode)) {
@@ -151,6 +177,12 @@ class HoneypotStats {
         if (ipGeo[ip]) {
           entry.geo = ipGeo[ip];
         }
+        if (ipPorts[ip]) {
+          entry.ports = Object.entries(ipPorts[ip])
+            .map(([port, c]) => ({ port: Number(port), count: c }))
+            .sort((a, b) => b.count - a.count);
+        }
+        if (ipPayloads[ip]) entry.payloads = ipPayloads[ip];
         return entry;
       });
 
@@ -202,9 +234,26 @@ class HoneypotStats {
               username: cred.username,
               password: maskPassword(cred.password),
               passwordHash: cred.passwordHash || null,
+              type: 'SSH',
             });
           }
         }
+      }
+    }
+
+    // Collect HTTP credential attempts (passwordHash is stored but raw password is not)
+    const httpCredentialAttempts = [];
+    for (let i = this.connections.length - 1; i >= 0 && httpCredentialAttempts.length < 50; i--) {
+      const conn = this.connections[i];
+      if (inferSource(conn) === 'http' && (conn.username || conn.passwordHash)) {
+        httpCredentialAttempts.push({
+          ip: conn.ip,
+          timestamp: conn.timestamp,
+          username: conn.username || null,
+          password: maskPassword('********'),
+          passwordHash: conn.passwordHash || null,
+          type: 'HTTP',
+        });
       }
     }
 
@@ -214,6 +263,11 @@ class HoneypotStats {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([version, count]) => ({ version, count }));
+
+    // Combined credential attempts (SSH + HTTP), newest first
+    const allCredentialAttempts = [...recentCredentials, ...httpCredentialAttempts]
+      .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
+      .slice(0, 30);
 
     return {
       totalConnections: this.connections.length,
@@ -226,6 +280,8 @@ class HoneypotStats {
       topCountries,
       hourlyLast24h: hourly,
       recentPayloads,
+      vectorBreakdown,
+      credentialAttempts: allCredentialAttempts,
       ssh: {
         totalSshConnections: sshConnections.length,
         uniqueClientVersions,

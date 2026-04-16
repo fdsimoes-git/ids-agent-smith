@@ -279,6 +279,125 @@ export function generateTelegramReport() {
   return lines.join('\n');
 }
 
+function generateTimelineSvg(hourly) {
+  const width = 900;
+  const height = 240;
+  const padL = 40, padR = 16, padT = 16, padB = 34;
+  const innerW = width - padL - padR;
+  const innerH = height - padT - padB;
+
+  if (!hourly || hourly.length === 0) {
+    return `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" class="chart" role="img" aria-label="Timeline"><text x="${width / 2}" y="${height / 2}" fill="#8b949e" font-size="13" text-anchor="middle" font-family="sans-serif">No data in the last 24h</text></svg>`;
+  }
+
+  const maxCount = Math.max(...hourly.map(h => h.count), 1);
+  const n = hourly.length;
+  const stepX = n > 1 ? innerW / (n - 1) : 0;
+
+  const points = hourly.map(({ count }, i) => {
+    const x = padL + (n > 1 ? i * stepX : innerW / 2);
+    const y = padT + innerH - (count / maxCount) * innerH;
+    return [x, y];
+  });
+
+  const linePath = points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const areaPath = `${linePath} L${points[points.length - 1][0].toFixed(1)},${(padT + innerH).toFixed(1)} L${points[0][0].toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
+
+  const gridY = [0, 0.25, 0.5, 0.75, 1];
+  const gridLines = gridY.map(t => {
+    const y = padT + innerH * (1 - t);
+    const val = Math.round(maxCount * t);
+    return `<line x1="${padL}" y1="${y}" x2="${width - padR}" y2="${y}" stroke="#21262d" stroke-width="1"/><text x="${padL - 8}" y="${y + 4}" fill="#6e7681" font-size="10" text-anchor="end" font-family="sans-serif">${val}</text>`;
+  }).join('');
+
+  const xLabels = hourly.map(({ hour }, i) => {
+    if (n > 12 && i % Math.ceil(n / 12) !== 0 && i !== n - 1) return '';
+    const x = padL + (n > 1 ? i * stepX : innerW / 2);
+    return `<text x="${x.toFixed(1)}" y="${height - padB + 18}" fill="#8b949e" font-size="10" text-anchor="middle" font-family="sans-serif">${esc(hour)}</text>`;
+  }).join('');
+
+  const dots = points.map(([x, y], i) =>
+    `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="#58a6ff"><title>${esc(hourly[i].hour)} — ${hourly[i].count} hits</title></circle>`
+  ).join('');
+
+  return `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" class="chart" role="img" aria-label="Hits over time">
+    <defs>
+      <linearGradient id="timelineFill" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="#58a6ff" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="#58a6ff" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    ${gridLines}
+    <path d="${areaPath}" fill="url(#timelineFill)"/>
+    <path d="${linePath}" fill="none" stroke="#58a6ff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}
+    ${xLabels}
+  </svg>`;
+}
+
+function generateVectorDonutSvg(vectorBreakdown) {
+  const width = 320, height = 260;
+  const cx = 130, cy = 130, r = 90, rInner = 58;
+
+  const entries = [
+    { key: 'ssh', label: 'SSH', color: '#f85149' },
+    { key: 'http', label: 'HTTP', color: '#3fb950' },
+    { key: 'tcp', label: 'TCP', color: '#d29922' },
+  ].map(e => ({ ...e, count: vectorBreakdown?.[e.key] || 0 }));
+
+  const total = entries.reduce((s, e) => s + e.count, 0);
+
+  if (total === 0) {
+    return `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" class="chart" role="img" aria-label="Attack vectors">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#21262d" stroke-width="${r - rInner}"/>
+      <text x="${cx}" y="${cy + 4}" fill="#8b949e" font-size="13" text-anchor="middle" font-family="sans-serif">No hits yet</text>
+    </svg>`;
+  }
+
+  function arcPath(startAngle, endAngle) {
+    // If a single slice makes up 100% of the donut, two identical endpoints
+    // collapse the arc to zero width; draw two half-arcs instead so the full
+    // ring renders.
+    if (endAngle - startAngle >= Math.PI * 2 - 1e-6) {
+      const mid = startAngle + Math.PI;
+      return arcPath(startAngle, mid) + ' ' + arcPath(mid, startAngle + Math.PI * 2);
+    }
+    const x1 = cx + r * Math.cos(startAngle);
+    const y1 = cy + r * Math.sin(startAngle);
+    const x2 = cx + r * Math.cos(endAngle);
+    const y2 = cy + r * Math.sin(endAngle);
+    const x3 = cx + rInner * Math.cos(endAngle);
+    const y3 = cy + rInner * Math.sin(endAngle);
+    const x4 = cx + rInner * Math.cos(startAngle);
+    const y4 = cy + rInner * Math.sin(startAngle);
+    const large = endAngle - startAngle > Math.PI ? 1 : 0;
+    return `M${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${large} 1 ${x2.toFixed(2)},${y2.toFixed(2)} L${x3.toFixed(2)},${y3.toFixed(2)} A${rInner},${rInner} 0 ${large} 0 ${x4.toFixed(2)},${y4.toFixed(2)} Z`;
+  }
+
+  let angle = -Math.PI / 2;
+  const slices = [];
+  const legend = [];
+  for (const e of entries) {
+    if (e.count === 0) {
+      legend.push(`<div class="legend-row"><span class="legend-dot" style="background:${e.color}"></span>${e.label}<span class="legend-val">0</span></div>`);
+      continue;
+    }
+    const sweep = (e.count / total) * Math.PI * 2;
+    const path = arcPath(angle, angle + sweep);
+    const pctLabel = ((e.count / total) * 100).toFixed(total >= 100 ? 0 : 1);
+    slices.push(`<path d="${path}" fill="${e.color}" stroke="#0d1117" stroke-width="1.5"><title>${e.label}: ${e.count} (${pctLabel}%)</title></path>`);
+    legend.push(`<div class="legend-row"><span class="legend-dot" style="background:${e.color}"></span>${e.label}<span class="legend-val">${e.count} (${pctLabel}%)</span></div>`);
+    angle += sweep;
+  }
+
+  return `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" class="chart donut" role="img" aria-label="Attack vector breakdown">
+    ${slices.join('')}
+    <text x="${cx}" y="${cy - 4}" fill="#c9d1d9" font-size="22" font-weight="700" text-anchor="middle" font-family="sans-serif">${total}</text>
+    <text x="${cx}" y="${cy + 16}" fill="#8b949e" font-size="11" text-anchor="middle" font-family="sans-serif">total hits</text>
+  </svg>
+  <div class="legend">${legend.join('')}</div>`;
+}
+
 export function generateHtmlReport() {
   const summary = honeypotStats.getSummary();
   const hasTopCountryData = summary.topCountries && summary.topCountries.length > 0;
@@ -291,150 +410,391 @@ export function generateHtmlReport() {
   const geoNote = hasRenderableGeoData
     ? ''
     : hasAnyGeoData
-      ? '<p class="geo-note">Geographic data was collected but the detected countries have no matching shapes in the simplified map.</p>'
-      : '<p class="geo-note">No geographic data available. Enable geo-IP lookup (issue #18) to populate this map.</p>';
+      ? '<p class="note">Geographic data was collected but the detected countries have no matching shapes in the simplified map.</p>'
+      : '<p class="note">No geographic data available. Enable geo-IP lookup (issue #18) to populate this map.</p>';
 
   const topCountryRows = hasTopCountryData
     ? summary.topCountries
         .map(({ country, countryCode, count }) => {
           const displayName = (country && country !== countryCode) ? country : (COUNTRY_SHAPES[countryCode]?.n || country);
-          return `<tr><td><code>${esc(countryCode)}</code></td><td>${esc(displayName)}</td><td>${count}</td><td><div class="bar bar-geo" style="width:${pct(count, summary.topCountries[0]?.count)}%"></div></td></tr>`;
+          const flag = countryFlag(countryCode);
+          const barPct = pct(count, summary.topCountries[0]?.count);
+          return `<tr>
+    <td class="flag">${flag}</td>
+    <td><code>${esc(countryCode)}</code> ${esc(displayName || '')}</td>
+    <td class="num">${count}</td>
+    <td class="bar-cell"><div class="bar bar-geo" style="width:${barPct}%"></div></td>
+  </tr>`;
         })
         .join('\n')
     : '';
 
   const topIpRows = summary.topIps
-    .map(({ ip, count, geo }) => {
-      const country = geo?.countryCode ? ` <small>(${esc(geo.countryCode)})</small>` : '';
-      return `<tr><td><code>${esc(ip)}</code>${country}</td><td>${count}</td><td><div class="bar" style="width:${pct(count, summary.topIps[0]?.count)}%"></div></td></tr>`;
+    .map((entry, idx) => {
+      const { ip, count, geo, ports, payloads } = entry;
+      const flag = geo?.countryCode ? countryFlag(geo.countryCode) : '';
+      const cc = geo?.countryCode ? `<span class="cc">${esc(geo.countryCode)}</span>` : '';
+      const countryName = geo?.country ? esc(geo.country) : '';
+      const barPct = pct(count, summary.topIps[0]?.count);
+      const city = geo?.city ? ` · ${esc(geo.city)}` : '';
+      const portsList = (ports || []).slice(0, 12).map(p => `<span class="port-chip">:${p.port}<span class="port-count">${p.count}</span></span>`).join(' ') || '<em>no port data</em>';
+      const payloadPreview = (payloads || []).length
+        ? payloads.map(p => `<pre>${esc(p.slice(0, 200))}</pre>`).join('')
+        : '<em>no payload captured</em>';
+      return `<tr class="ip-row">
+    <td><button class="toggle" data-target="ip-detail-${idx}" aria-expanded="false">+</button></td>
+    <td class="flag">${flag}</td>
+    <td><code>${esc(ip)}</code> ${cc}<div class="ip-meta">${countryName}${city}</div></td>
+    <td class="num">${count}</td>
+    <td class="bar-cell"><div class="bar" style="width:${barPct}%"></div></td>
+  </tr>
+  <tr id="ip-detail-${idx}" class="detail-row" hidden>
+    <td colspan="5">
+      <div class="detail-grid">
+        <div><strong>Ports hit:</strong><div class="ports">${portsList}</div></div>
+        <div><strong>Recent payloads:</strong><div class="payloads">${payloadPreview}</div></div>
+      </div>
+    </td>
+  </tr>`;
     })
     .join('\n');
 
   const topPortRows = summary.topPorts
-    .map(({ port, count }) => `<tr><td>:${port}</td><td>${count}</td><td><div class="bar bar-port" style="width:${pct(count, summary.topPorts[0]?.count)}%"></div></td></tr>`)
-    .join('\n');
-
-  const maxH = Math.max(...summary.hourlyLast24h.map(h => h.count), 1);
-  const hourlyBars = summary.hourlyLast24h
-    .map(({ hour, count }) => {
-      const height = Math.max(2, Math.round((count / maxH) * 120));
-      return `<div class="hbar-col"><div class="hbar" style="height:${height}px"></div><span>${hour}</span><small>${count}</small></div>`;
-    })
+    .map(({ port, count }) => `<tr><td>:${port}</td><td class="num">${count}</td><td class="bar-cell"><div class="bar bar-port" style="width:${pct(count, summary.topPorts[0]?.count)}%"></div></td></tr>`)
     .join('\n');
 
   const payloadRows = summary.recentPayloads
-    .map(p => `<tr><td><code>${esc(p.ip)}</code></td><td>:${p.port}</td><td>${esc(p.timestamp)}</td><td><pre>${esc(p.payload.slice(0, 120))}</pre></td></tr>`)
+    .map(p => `<tr><td><code>${esc(p.ip)}</code></td><td>:${p.port}</td><td class="ts-cell">${esc(p.timestamp)}</td><td><pre>${esc(p.payload.slice(0, 160))}</pre></td></tr>`)
     .join('\n');
 
   const sshClientRows = summary.ssh.topClientVersions
-    .map(({ version, count }) => `<tr><td><code>${esc(version)}</code></td><td>${count}</td></tr>`)
+    .map(({ version, count }) => `<tr><td><code>${esc(version)}</code></td><td class="num">${count}</td></tr>`)
     .join('\n');
 
-  const sshCredRows = summary.ssh.recentCredentials
-    .map(c => `<tr><td><code>${esc(c.ip)}</code></td><td>${esc(c.timestamp)}</td><td><code>${esc(c.username || '—')}</code></td><td><code>${esc(c.password)}</code></td></tr>`)
+  const credAttempts = summary.credentialAttempts || [];
+  const credRows = credAttempts
+    .map(c => {
+      const badgeClass = c.type === 'SSH' ? 'badge-ssh' : 'badge-http';
+      return `<tr>
+    <td><span class="badge ${badgeClass}">${esc(c.type)}</span></td>
+    <td><code>${esc(c.ip)}</code></td>
+    <td class="ts-cell">${esc(c.timestamp)}</td>
+    <td><code>${esc(c.username || '—')}</code></td>
+    <td><code>${esc(c.password || '—')}</code></td>
+  </tr>`;
+    })
     .join('\n');
+
+  const timelineSvg = generateTimelineSvg(summary.hourlyLast24h || []);
+  const vectorDonut = generateVectorDonutSvg(summary.vectorBreakdown || { ssh: 0, http: 0, tcp: 0 });
+
+  const activePorts24h = summary.topPorts.length;
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="60">
 <title>Honeypot Report — IDS Agent</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #c9d1d9; padding: 2rem; }
-  h1 { color: #58a6ff; margin-bottom: .5rem; }
-  h2 { color: #8b949e; margin: 2rem 0 .5rem; border-bottom: 1px solid #21262d; padding-bottom: .3rem; }
-  .summary { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 1rem 0; }
-  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1rem 1.5rem; min-width: 150px; }
-  .card .num { font-size: 2rem; font-weight: bold; color: #58a6ff; }
-  .card .label { color: #8b949e; font-size: .85rem; }
-  table { width: 100%; border-collapse: collapse; margin: .5rem 0; }
-  th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #21262d; }
-  th { color: #8b949e; font-size: .8rem; text-transform: uppercase; }
-  code { background: #1c2128; padding: .15rem .4rem; border-radius: 4px; font-size: .9rem; }
-  pre { background: #1c2128; padding: .3rem .5rem; border-radius: 4px; font-size: .8rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 0; }
-  .bar { height: 18px; background: linear-gradient(90deg, #f85149, #da3633); border-radius: 3px; min-width: 4px; }
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --bg: #0d1117;
+    --bg-elev: #161b22;
+    --bg-elev-2: #1c2128;
+    --border: #30363d;
+    --border-soft: #21262d;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --text-dimmer: #6e7681;
+    --accent: #58a6ff;
+    --danger: #f85149;
+    --warn: #d29922;
+    --ok: #3fb950;
+    --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.15);
+  }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: radial-gradient(1200px 600px at 0% 0%, #121b2e 0%, var(--bg) 40%) var(--bg);
+    color: var(--text);
+    line-height: 1.45;
+    min-height: 100vh;
+  }
+  .app { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-soft); }
+  .brand { display: flex; align-items: center; gap: .75rem; }
+  .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 10px var(--danger); animation: pulse 2s infinite ease-in-out; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  h1 { font-size: 1.4rem; margin: 0; color: var(--text); letter-spacing: -.01em; }
+  h1 small { display: block; font-size: .75rem; color: var(--text-dim); font-weight: 400; letter-spacing: 0; }
+  .meta { color: var(--text-dim); font-size: .8rem; text-align: right; }
+
+  h2 { font-size: 1rem; font-weight: 600; color: var(--text); margin: 2rem 0 .75rem; display: flex; align-items: center; gap: .5rem; letter-spacing: .01em; }
+  h2::before { content: ""; width: 3px; height: 1rem; background: var(--accent); border-radius: 2px; }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .75rem; }
+  .card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px; padding: .9rem 1rem; box-shadow: var(--shadow); transition: border-color .15s ease; }
+  .card:hover { border-color: var(--accent); }
+  .card .num { font-size: 1.8rem; font-weight: 700; color: var(--accent); line-height: 1.1; letter-spacing: -.02em; }
+  .card.accent-danger .num { color: var(--danger); }
+  .card.accent-ok .num { color: var(--ok); }
+  .card.accent-warn .num { color: var(--warn); }
+  .card .label { color: var(--text-dim); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; margin-top: .2rem; }
+  .card .sub { color: var(--text-dimmer); font-size: .7rem; margin-top: .15rem; }
+
+  .panel-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; margin-top: 1rem; }
+  .panel { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; box-shadow: var(--shadow); }
+  .panel h3 { margin: 0 0 .75rem; font-size: .85rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  .chart { width: 100%; height: auto; display: block; }
+  .donut { max-width: 260px; margin: 0 auto; }
+
+  .legend { display: flex; flex-direction: column; gap: .3rem; margin-top: .5rem; }
+  .legend-row { display: flex; align-items: center; gap: .5rem; font-size: .85rem; color: var(--text); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .legend-val { margin-left: auto; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
+  th { color: var(--text-dim); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; background: var(--bg-elev-2); cursor: pointer; user-select: none; }
+  th.sortable::after { content: " ⇅"; color: var(--text-dimmer); font-size: .75rem; }
+  th.sort-asc::after { content: " ↑"; color: var(--accent); }
+  th.sort-desc::after { content: " ↓"; color: var(--accent); }
+  tbody tr:hover { background: rgba(88, 166, 255, .04); }
+  td.num, td.ts-cell { font-variant-numeric: tabular-nums; }
+  td.num { text-align: right; color: var(--text); font-weight: 600; }
+  td.ts-cell { color: var(--text-dim); font-size: .8rem; white-space: nowrap; }
+  td.bar-cell { width: 38%; }
+  td.flag { width: 2.2rem; font-size: 1.2rem; text-align: center; }
+  .table-wrap { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
+
+  code { background: var(--bg-elev-2); padding: .15rem .4rem; border-radius: 4px; font-size: .85rem; font-family: "SF Mono", "Consolas", "Liberation Mono", Menlo, monospace; color: var(--text); }
+  pre { background: var(--bg-elev-2); padding: .5rem .7rem; border-radius: 6px; font-size: .75rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: .25rem 0; color: var(--text); border: 1px solid var(--border-soft); }
+
+  .bar { height: 14px; background: linear-gradient(90deg, #f85149, #da3633); border-radius: 3px; min-width: 4px; }
   .bar-port { background: linear-gradient(90deg, #f0883e, #d29922); }
   .bar-geo { background: linear-gradient(90deg, #fd8d3c, #bd0026); }
-  .hbar-wrap { display: flex; gap: 6px; align-items: flex-end; margin: 1rem 0; padding: .5rem; background: #161b22; border-radius: 8px; overflow-x: auto; }
-  .hbar-col { display: flex; flex-direction: column; align-items: center; min-width: 32px; }
-  .hbar { width: 24px; background: linear-gradient(0deg, #238636, #2ea043); border-radius: 3px 3px 0 0; }
-  .hbar-col span { font-size: .65rem; color: #8b949e; margin-top: 4px; }
-  .hbar-col small { font-size: .65rem; color: #58a6ff; }
-  .ts { color: #8b949e; font-size: .75rem; margin-top: 2rem; }
-  .world-map { margin: 1.5rem 0; }
-  .world-map svg path:hover { opacity: 0.8; stroke: #58a6ff; stroke-width: 1.5; cursor: default; }
-  .geo-note { color: #8b949e; font-style: italic; margin: 1rem 0; padding: .75rem 1rem; background: #161b22; border: 1px solid #30363d; border-radius: 6px; }
+
+  .cc { color: var(--text-dim); font-size: .75rem; margin-left: .3rem; padding: .1rem .35rem; background: var(--bg-elev-2); border-radius: 3px; }
+  .ip-meta { font-size: .75rem; color: var(--text-dim); margin-top: .15rem; }
+  .toggle { background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text); width: 22px; height: 22px; padding: 0; border-radius: 4px; cursor: pointer; font-size: .9rem; line-height: 1; font-family: inherit; }
+  .toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .detail-row td { background: rgba(88, 166, 255, .03); padding: .8rem 1rem; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .detail-grid strong { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); font-weight: 600; }
+  .ports { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .4rem; }
+  .port-chip { display: inline-flex; align-items: center; gap: .3rem; background: var(--bg-elev-2); border: 1px solid var(--border-soft); border-radius: 4px; padding: .1rem .4rem; font-size: .75rem; font-family: "SF Mono", monospace; }
+  .port-chip .port-count { color: var(--text-dim); font-size: .7rem; }
+  .payloads { margin-top: .4rem; }
+
+  .badge { display: inline-block; padding: .15rem .45rem; border-radius: 3px; font-size: .7rem; font-weight: 600; letter-spacing: .04em; }
+  .badge-ssh { background: rgba(248, 81, 73, .15); color: #ff7b72; border: 1px solid rgba(248, 81, 73, .3); }
+  .badge-http { background: rgba(63, 185, 80, .15); color: #56d364; border: 1px solid rgba(63, 185, 80, .3); }
+
+  .world-map { margin: 0; }
+  .world-map svg { background: #0a1628; border-radius: 8px; display: block; width: 100%; height: auto; }
+  .world-map svg path:hover { opacity: 0.8; stroke: var(--accent); stroke-width: 1.5; cursor: default; }
+
+  .note { color: var(--text-dim); font-style: italic; font-size: .85rem; margin: .5rem 0 1rem; padding: .6rem .8rem; background: var(--bg-elev); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; }
+  .empty-row td { color: var(--text-dim); text-align: center; padding: 1.5rem; font-style: italic; }
+
+  .footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border-soft); color: var(--text-dimmer); font-size: .75rem; text-align: center; }
+
+  @media (max-width: 780px) {
+    .app { padding: 1rem .75rem 2rem; }
+    h1 { font-size: 1.15rem; }
+    .panel-grid { grid-template-columns: 1fr; }
+    .detail-grid { grid-template-columns: 1fr; }
+    td.bar-cell { display: none; }
+    th, td { padding: .45rem .5rem; }
+    .meta { text-align: left; width: 100%; }
+  }
 </style>
 </head>
 <body>
-<h1>Honeypot Report</h1>
-<p class="ts">Generated: ${new Date().toISOString()}</p>
+<div class="app">
 
-<div class="summary">
-  <div class="card"><div class="num">${summary.totalConnections}</div><div class="label">Total Connections</div></div>
-  <div class="card"><div class="num">${summary.connectionsLast24h}</div><div class="label">Last 24h</div></div>
-  <div class="card"><div class="num">${summary.uniqueIps}</div><div class="label">Unique IPs (24h)</div></div>
-  <div class="card"><div class="num">${summary.topPorts.length}</div><div class="label">Unique ports probed (24h)</div></div>
-  <div class="card"><div class="num">${summary.uniqueCountries ?? 0}</div><div class="label">Countries (24h)</div></div>
-</div>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    <h1>Honeypot Report<small>IDS Agent Smith — live attack telemetry</small></h1>
+  </div>
+  <div class="meta">
+    <div>Generated: <span>${new Date().toISOString()}</span></div>
+    <div>Auto-refresh: 60s</div>
+  </div>
+</header>
 
-<h2>Global Attack Origins (24h)</h2>
-${geoNote}
-<div class="world-map">
-${worldMapSvg}
-</div>
+<section>
+  <div class="summary-grid">
+    <div class="card accent-danger"><div class="num">${summary.totalConnections}</div><div class="label">Total Hits</div><div class="sub">All time</div></div>
+    <div class="card"><div class="num">${summary.connectionsLast24h}</div><div class="label">Last 24h</div><div class="sub">Rolling window</div></div>
+    <div class="card"><div class="num">${summary.uniqueIps}</div><div class="label">Unique IPs</div><div class="sub">24h</div></div>
+    <div class="card accent-warn"><div class="num">${summary.uniqueCountries ?? 0}</div><div class="label">Countries</div><div class="sub">24h</div></div>
+    <div class="card accent-ok"><div class="num">${activePorts24h}</div><div class="label">Active Ports</div><div class="sub">24h</div></div>
+  </div>
+</section>
+
+<section>
+  <div class="panel-grid">
+    <div class="panel">
+      <h3>Attack Timeline — Last 24h (hourly)</h3>
+      ${timelineSvg}
+    </div>
+    <div class="panel">
+      <h3>Attack Vectors</h3>
+      ${vectorDonut}
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Global Attack Origins (24h)</h2>
+  ${geoNote}
+  <div class="world-map">
+  ${worldMapSvg}
+  </div>
+</section>
+
 ${hasTopCountryData ? `
-<h2>Top Attacker Countries (24h)</h2>
-<table>
-  <tr><th>Code</th><th>Country</th><th>Hits</th><th>Distribution</th></tr>
-  ${topCountryRows}
-</table>
+<section>
+  <h2>Top Attacker Countries (24h)</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th></th><th>Country</th><th class="num">Hits</th><th>Share</th></tr></thead>
+    <tbody>
+    ${topCountryRows}
+    </tbody>
+  </table>
+  </div>
+</section>
 ` : ''}
 
-<h2>Top Attacker IPs (24h)</h2>
-<table>
-  <tr><th>IP</th><th>Hits</th><th>Distribution</th></tr>
-  ${topIpRows || '<tr><td colspan="3">No data yet</td></tr>'}
-</table>
+<section>
+  <h2>Top Attacker IPs (24h)</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th></th><th></th><th>IP</th><th class="num">Hits</th><th>Share</th></tr></thead>
+    <tbody>
+    ${topIpRows || '<tr class="empty-row"><td colspan="5">No data yet</td></tr>'}
+    </tbody>
+  </table>
+  </div>
+</section>
 
-<h2>Most Probed Ports (24h)</h2>
-<table>
-  <tr><th>Port</th><th>Hits</th><th>Distribution</th></tr>
-  ${topPortRows || '<tr><td colspan="3">No data yet</td></tr>'}
-</table>
+<section>
+  <h2>Most Probed Ports (24h)</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th class="sortable">Port</th><th class="sortable num">Hits</th><th>Share</th></tr></thead>
+    <tbody>
+    ${topPortRows || '<tr class="empty-row"><td colspan="3">No data yet</td></tr>'}
+    </tbody>
+  </table>
+  </div>
+</section>
 
-<h2>Connections by Hour (Last 24h)</h2>
-<div class="hbar-wrap">
-  ${hourlyBars || '<p>No data yet</p>'}
+<section>
+  <h2>Credential Attempts</h2>
+  <div class="table-wrap">
+  <table class="sortable-table">
+    <thead><tr><th class="sortable">Type</th><th class="sortable">IP</th><th class="sortable">Time</th><th class="sortable">Username</th><th>Password</th></tr></thead>
+    <tbody>
+    ${credRows || '<tr class="empty-row"><td colspan="5">No credentials captured yet</td></tr>'}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>SSH Honeypot</h2>
+  <div class="summary-grid">
+    <div class="card"><div class="num">${summary.ssh.totalSshConnections}</div><div class="label">SSH Connections</div></div>
+    <div class="card"><div class="num">${summary.ssh.uniqueClientVersions}</div><div class="label">Unique Clients</div></div>
+    <div class="card accent-danger"><div class="num">${summary.ssh.totalCredentialAttempts}</div><div class="label">SSH Creds Tried</div></div>
+  </div>
+</section>
+
+<section>
+  <h2>SSH Client Versions</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Client Version</th><th class="num">Count</th></tr></thead>
+    <tbody>
+    ${sshClientRows || '<tr class="empty-row"><td colspan="2">No SSH connections yet</td></tr>'}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>Recent Payloads</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>IP</th><th>Port</th><th>Time</th><th>Payload</th></tr></thead>
+    <tbody>
+    ${payloadRows || '<tr class="empty-row"><td colspan="4">No payloads captured yet</td></tr>'}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<div class="footer">IDS Agent Smith · Page auto-refreshes every 60 seconds</div>
+
 </div>
 
-<h2>SSH Honeypot</h2>
-<div class="summary">
-  <div class="card"><div class="num">${summary.ssh.totalSshConnections}</div><div class="label">SSH Connections</div></div>
-  <div class="card"><div class="num">${summary.ssh.uniqueClientVersions}</div><div class="label">Unique Clients</div></div>
-  <div class="card"><div class="num">${summary.ssh.totalCredentialAttempts}</div><div class="label">Credential Attempts</div></div>
-</div>
+<script>
+(function() {
+  // Expandable IP detail rows
+  document.querySelectorAll('.toggle').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var targetId = btn.getAttribute('data-target');
+      var row = document.getElementById(targetId);
+      if (!row) return;
+      var open = row.hasAttribute('hidden') === false;
+      if (open) {
+        row.setAttribute('hidden', '');
+        btn.textContent = '+';
+        btn.setAttribute('aria-expanded', 'false');
+      } else {
+        row.removeAttribute('hidden');
+        btn.textContent = '−';
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    });
+  });
 
-<h2>SSH Client Versions</h2>
-<table>
-  <tr><th>Client Version</th><th>Count</th></tr>
-  ${sshClientRows || '<tr><td colspan="2">No SSH connections yet</td></tr>'}
-</table>
-
-<h2>SSH Credential Attempts</h2>
-<table>
-  <tr><th>IP</th><th>Time</th><th>Username</th><th>Password</th></tr>
-  ${sshCredRows || '<tr><td colspan="4">No credentials captured yet</td></tr>'}
-</table>
-
-<h2>Recent Payloads</h2>
-<table>
-  <tr><th>IP</th><th>Port</th><th>Time</th><th>Payload</th></tr>
-  ${payloadRows || '<tr><td colspan="4">No payloads captured yet</td></tr>'}
-</table>
-
+  // Sortable tables
+  document.querySelectorAll('table').forEach(function(table) {
+    var headers = table.querySelectorAll('th.sortable');
+    headers.forEach(function(th, colIdx) {
+      th.addEventListener('click', function() {
+        var tbody = table.tBodies[0];
+        if (!tbody) return;
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr')).filter(function(r) {
+          return !r.classList.contains('detail-row') && !r.classList.contains('empty-row');
+        });
+        var asc = !th.classList.contains('sort-asc');
+        headers.forEach(function(h) { h.classList.remove('sort-asc', 'sort-desc'); });
+        th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+        rows.sort(function(a, b) {
+          var av = (a.cells[colIdx] && a.cells[colIdx].innerText || '').trim();
+          var bv = (b.cells[colIdx] && b.cells[colIdx].innerText || '').trim();
+          var an = parseFloat(av.replace(/[^0-9.\\-]/g, ''));
+          var bn = parseFloat(bv.replace(/[^0-9.\\-]/g, ''));
+          if (!isNaN(an) && !isNaN(bn) && av.match(/^[:\\d\\s.,\\-]+$/)) {
+            return asc ? an - bn : bn - an;
+          }
+          return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+        });
+        rows.forEach(function(r) { tbody.appendChild(r); });
+      });
+    });
+  });
+})();
+</script>
 </body>
 </html>`;
 }

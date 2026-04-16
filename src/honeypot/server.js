@@ -94,6 +94,7 @@ function createDecoyServer(port, onThreat) {
           port,
           timestamp,
           payload: safePayload,
+          source: 'tcp',
         });
 
         logger.info(`Honeypot hit: ${remoteIp} -> port ${port}`, {
