@@ -163,10 +163,11 @@ function extractCredentials(chunk, credentials) {
   const userMatch = text.match(/(?:user(?:name)?|login)\s*[=:]\s*(\S+)/i);
   const passMatch = text.match(/(?:pass(?:word)?)\s*[=:]\s*(\S+)/i);
   if (userMatch || passMatch) {
-    credentials.push({
-      username: sanitizeCredential(userMatch?.[1]),
-      password: sanitizeCredential(passMatch?.[1]),
-    });
+    const username = sanitizeCredential(userMatch?.[1]);
+    const password = sanitizeCredential(passMatch?.[1]);
+    if (username !== null || password !== null) {
+      credentials.push({ username, password });
+    }
     return;
   }
 
@@ -180,10 +181,11 @@ function extractCredentials(chunk, credentials) {
       return clean.length > 0 && clean.length < 64;
     });
     if (nullParts.length >= 2) {
-      credentials.push({
-        username: sanitizeCredential(nullParts[0].replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim()),
-        password: sanitizeCredential(nullParts[1].replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim()),
-      });
+      const username = sanitizeCredential(nullParts[0].replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim());
+      const password = sanitizeCredential(nullParts[1].replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim());
+      if (username !== null || password !== null) {
+        credentials.push({ username, password });
+      }
     }
   }
 }

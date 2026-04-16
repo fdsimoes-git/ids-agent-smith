@@ -98,6 +98,12 @@ const config = {
     const validSshPorts = sshPorts.filter(p => ports.includes(p));
     const droppedSshPorts = sshPorts.filter(p => !ports.includes(p));
     if (droppedSshPorts.length > 0) {
+      if (enabled && rawSshPorts !== undefined) {
+        throw new Error(
+          `HONEYPOT_ENABLED=true but HONEYPOT_SSH_PORTS contains ports not in HONEYPOT_PORTS ` +
+          `(${droppedSshPorts.join(', ')}). Add them to HONEYPOT_PORTS or remove them from HONEYPOT_SSH_PORTS.`
+        );
+      }
       // eslint-disable-next-line no-console
       console.warn(
         `Warning: HONEYPOT_SSH_PORTS contains ports not in HONEYPOT_PORTS (${droppedSshPorts.join(', ')}); ` +
