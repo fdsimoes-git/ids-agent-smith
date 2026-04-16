@@ -534,6 +534,9 @@ export function generateHtmlReport() {
   .brand { display: flex; align-items: center; gap: .75rem; }
   .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 10px var(--danger); animation: pulse 2s infinite ease-in-out; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  @media (prefers-reduced-motion: reduce) {
+    .brand-dot { animation: none; }
+  }
   h1 { font-size: 1.4rem; margin: 0; color: var(--text); letter-spacing: -.01em; }
   h1 small { display: block; font-size: .75rem; color: var(--text-dim); font-weight: 400; letter-spacing: 0; }
   .meta { color: var(--text-dim); font-size: .8rem; text-align: right; }
