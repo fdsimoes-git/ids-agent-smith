@@ -2,6 +2,7 @@ import config from '../../../config.js';
 import logger from '../../utils/logger.js';
 import { sanitizeIp } from '../../utils/sanitize.js';
 import honeypotStats from '../stats.js';
+import { redactCredentialsInText } from '../utils.js';
 
 const SSH_BANNER = 'SSH-2.0-OpenSSH_8.9p1 Ubuntu-3\r\n';
 const MAX_CREDENTIALS_PER_CONNECTION = 20;
@@ -96,7 +97,11 @@ export function handleSshConnection(socket, port, onThreat) {
     finalized = true;
 
     const rawPayload = payloadBuffers.length > 0 ? Buffer.concat(payloadBuffers).toString('utf8') : '';
-    const safePayload = rawPayload.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+    // Strip control chars, then redact plaintext `user=.../pass=...` style
+    // guesses so persisted payloads and log previews do not leak credentials.
+    const safePayload = redactCredentialsInText(
+      rawPayload.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+    );
 
     honeypotStats.record({
       ip: remoteIp,

@@ -169,7 +169,9 @@ class HoneypotStats {
 
     // SSH-specific aggregations
     const sshConnections = this.connections.filter(c => c.banner || c.clientVersion);
-    const clientVersions = {};
+    // Use a null-prototype object so attacker-controlled clientVersion strings
+    // like `__proto__` or `constructor` cannot trigger prototype pollution.
+    const clientVersions = Object.create(null);
     for (const conn of sshConnections) {
       if (conn.clientVersion) {
         clientVersions[conn.clientVersion] = (clientVersions[conn.clientVersion] || 0) + 1;
