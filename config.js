@@ -71,6 +71,10 @@ const config = {
       maxConnectionMs: 30_000,
       maxRecords: 10_000,
       retentionDays: 7,
+      http: {
+        enabled: process.env.HONEYPOT_HTTP_ENABLED === 'true',
+        port: parseInt(process.env.HONEYPOT_HTTP_PORT, 10) || 8080,
+      },
     };
   })(),
 };

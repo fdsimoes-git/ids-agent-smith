@@ -77,6 +77,8 @@ sudo nano /etc/systemd/system/idps-agent.service
 | `HONEYPOT_ENABLED` | No | `true` to enable honeypot decoy ports (default: `false`) |
 | `HONEYPOT_PORTS` | No | Comma-separated decoy ports (default: `2222,8080,3389,5900`) |
 | `HONEYPOT_DATA_PATH` | No | Path for honeypot data file (default: `/var/log/idps-agent/honeypot.json`) |
+| `HONEYPOT_HTTP_ENABLED` | No | `true` to enable HTTP honeypot with fake login pages (default: `false`) |
+| `HONEYPOT_HTTP_PORT` | No | HTTP honeypot listen port (default: `8080`) |
 
 ## Nginx Log Format
 
@@ -152,6 +154,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:3001/stats
 | xss-attempt | XSS patterns in URL | HIGH |
 | post-ban-access | Recently-unbanned IP accessing server again | MEDIUM |
 | honeypot | Connection to a decoy honeypot port | HIGH |
+| honeypot (HTTP) | Credential attempt on fake admin login page | HIGH |
 
 ## AI Integration
 
@@ -215,6 +218,34 @@ Choose ports that attackers commonly scan but your server doesn't use:
 - `3306` — MySQL
 
 Avoid ports used by your actual services. Ports below 1024 require `CAP_NET_BIND_SERVICE` or root.
+
+### HTTP Honeypot
+
+An optional HTTP server that serves convincing fake admin login pages to capture credential stuffing attempts and fingerprint scanning tools.
+
+#### How it works
+
+1. An HTTP server listens on a configurable port (default: 8080)
+2. Serves realistic fake login pages for common admin paths:
+   - `/wp-admin`, `/wp-login.php` — WordPress login
+   - `/admin`, `/login`, `/dashboard` — generic admin panel
+   - `/phpmyadmin` — phpMyAdmin login
+   - All other paths return a 404 that mimics a real nginx server
+3. POST requests to login pages capture submitted credentials (username/password)
+4. Returns "Invalid credentials" responses to keep bots engaged and trying more passwords
+5. Every request is logged with IP, path, User-Agent, and timestamp
+6. User-Agent strings are checked against known scanner tool signatures (sqlmap, Nikto, Hydra, Nmap, etc.)
+7. Credential attempts generate HIGH-severity threats that flow through the standard alerting pipeline
+
+#### Enabling
+
+```bash
+# In your systemd service environment
+HONEYPOT_HTTP_ENABLED=true
+HONEYPOT_HTTP_PORT=8080  # optional, 8080 is the default
+```
+
+**Note:** If you use the TCP honeypot on port 8080 (`HONEYPOT_PORTS`), remove 8080 from that list when enabling the HTTP honeypot to avoid port conflicts.
 
 ## Architecture
 
