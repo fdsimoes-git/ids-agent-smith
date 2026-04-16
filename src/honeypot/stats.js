@@ -252,7 +252,7 @@ class HoneypotStats {
               ip: conn.ip,
               timestamp: conn.timestamp,
               username: cred.username,
-              password: maskPassword(cred.password),
+              password: cred.password,
               passwordHash: cred.passwordHash || null,
               type: 'SSH',
             });

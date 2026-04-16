@@ -455,7 +455,7 @@ export function generateHtmlReport() {
     <td class="num">${count}</td>
     <td class="bar-cell"><div class="bar" style="width:${barPct}%"></div></td>
   </tr>
-  <tr id="ip-detail-${idx}" class="detail-row" hidden>
+  <tr id="${detailId}" class="detail-row" hidden>
     <td colspan="5">
       <div class="detail-grid">
         <div><strong>Ports hit:</strong><div class="ports">${portsList}</div></div>
