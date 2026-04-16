@@ -94,15 +94,22 @@ class HoneypotStats {
     const byHour = Object.create(null);
     const byCountry = Object.create(null);
     const ipGeo = Object.create(null);
+    const isoAlpha2 = /^[A-Z]{2}$/;
 
     for (const conn of this.connections) {
       byIp[conn.ip] = (byIp[conn.ip] || 0) + 1;
       byPort[conn.port] = (byPort[conn.port] || 0) + 1;
 
-      if (conn.geo?.countryCode && /^[A-Z]{2}$/.test(conn.geo.countryCode)) {
-        const key = conn.geo.countryCode;
-        byCountry[key] = (byCountry[key] || { country: conn.geo.country, countryCode: key, count: 0 });
-        byCountry[key].count++;
+      const rawCode = conn.geo?.countryCode;
+      if (typeof rawCode === 'string' && isoAlpha2.test(rawCode)) {
+        const code = rawCode;
+        const country = typeof conn.geo.country === 'string' ? conn.geo.country.trim() : '';
+        if (!byCountry[code]) {
+          byCountry[code] = { country: country || code, countryCode: code, count: 0 };
+        } else if ((!byCountry[code].country || byCountry[code].country === code) && country) {
+          byCountry[code].country = country;
+        }
+        byCountry[code].count++;
         // Keep latest geo per IP for topIps enrichment
         ipGeo[conn.ip] = conn.geo;
       }
@@ -129,13 +136,14 @@ class HoneypotStats {
       .sort((a, b) => b[1] - a[1])
       .map(([port, count]) => ({ port: Number(port), count }));
 
+    const countryCounts = Object.values(byCountry)
+      .sort((a, b) => b.count - a.count);
+
+    const topCountries = countryCounts.slice(0, 20);
+
     const hourly = Object.entries(byHour)
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([hour, count]) => ({ hour, count }));
-
-    const topCountries = Object.values(byCountry)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
 
     const recentPayloads = this.connections
       .filter(c => c.payload)
@@ -147,8 +155,10 @@ class HoneypotStats {
       totalConnections: this.connections.length,
       connectionsLast24h: recent.length,
       uniqueIps: Object.keys(byIp).length,
+      uniqueCountries: countryCounts.length,
       topIps,
       topPorts,
+      countryCounts,
       topCountries,
       hourlyLast24h: hourly,
       recentPayloads,
