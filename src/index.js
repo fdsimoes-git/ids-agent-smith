@@ -18,6 +18,7 @@ import { startApiServer, stopApiServer } from './api/server.js';
 import { startBot, stopBot } from './bot/commands.js';
 import { startHoneypot, stopHoneypot } from './honeypot/server.js';
 import { startHttpHoneypot, stopHttpHoneypot } from './honeypot/http.js';
+import { startDigest, stopDigest } from './honeypot/digest.js';
 
 const cooldown = new CooldownManager(config.alertCooldownMs);
 const tailers = [];
@@ -114,6 +115,7 @@ async function shutdown(signal) {
   stopBot();
 
   if (config.honeypot.enabled) {
+    stopDigest();
     try {
       await stopHoneypot();
     } catch (err) {
@@ -186,6 +188,7 @@ async function main() {
         logger.error('Honeypot threat handler error', { error: err.message });
       });
     }) || [];
+    startDigest();
   }
 
   // HTTP honeypot (optional) — fake admin login pages

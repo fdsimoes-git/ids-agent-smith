@@ -82,6 +82,8 @@ sudo nano /etc/systemd/system/idps-agent.service
 | `HONEYPOT_HTTP_PORT` | No | HTTP honeypot listen port (default: `8080`) |
 | `GEOIP_ENABLED` | No | `false` to disable geo-IP lookups (default: `true`) |
 | `GEOIP_API_URL` | No | Base URL for ip-api.com (default: `http://ip-api.com`). The free tier only supports HTTP; set to `https://pro.ip-api.com` if you have a paid plan |
+| `HONEYPOT_DAILY_DIGEST` | No | `true` to enable daily honeypot activity digest via Telegram (default: `false`) |
+| `HONEYPOT_DIGEST_HOUR` | No | Hour (0-23) to send the daily digest (default: `8`) |
 
 ## Nginx Log Format
 

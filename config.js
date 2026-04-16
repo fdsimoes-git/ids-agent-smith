@@ -98,6 +98,10 @@ const config = {
         enabled: httpEnabled,
         port: httpPort,
       },
+      dailyDigest: {
+        enabled: process.env.HONEYPOT_DAILY_DIGEST === 'true',
+        hour: parseInt(process.env.HONEYPOT_DIGEST_HOUR, 10) || 8,
+      },
     };
   })(),
 };
