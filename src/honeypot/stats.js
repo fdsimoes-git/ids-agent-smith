@@ -60,6 +60,7 @@ class HoneypotStats {
     this.dirty = true;
 
     // Enrich with geo-IP data in the background (best-effort)
+    if (!config.geoip?.enabled) return;
     lookupIp(event.ip).then(geo => {
       if (geo) {
         entry.geo = geo;

@@ -58,7 +58,7 @@ function pruneNegCache() {
 }
 
 function stripMappedPrefix(ip) {
-  return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  return /^::ffff:/i.test(ip) ? ip.slice(7) : ip;
 }
 
 function isPrivateIp(ip) {
