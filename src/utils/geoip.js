@@ -23,6 +23,8 @@ const RATE_WINDOW_MS = 60_000;
 let windowRequestCount = 0;
 let windowStart = Date.now();
 
+const MAX_RESPONSE_BYTES = 64 * 1024;
+
 function canConsume() {
   const now = Date.now();
   if (now - windowStart >= RATE_WINDOW_MS) {
@@ -70,8 +72,21 @@ function httpGet(url) {
     const doRequest = url.startsWith('https') ? httpsRequest : httpRequest;
     const req = doRequest(url, { timeout: 5000 }, res => {
       let data = '';
-      res.on('data', chunk => { data += chunk; });
+      let size = 0;
+      let aborted = false;
+      res.on('data', chunk => {
+        if (aborted) return;
+        size += chunk.length;
+        if (size > MAX_RESPONSE_BYTES) {
+          aborted = true;
+          req.destroy();
+          reject(new Error('Response too large'));
+          return;
+        }
+        data += chunk;
+      });
       res.on('end', () => {
+        if (aborted) return;
         if (res.statusCode !== 200) {
           reject(new Error(`HTTP ${res.statusCode}`));
           return;
