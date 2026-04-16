@@ -6,35 +6,53 @@ import honeypotStats from './stats.js';
 let timer = null;
 let lastSentDate = null;
 
+function msUntilNext(hour, minute) {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(hour, minute, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  return next - now;
+}
+
+function scheduleNext() {
+  const { hour, minute } = config.honeypot.dailyDigest;
+  const delay = msUntilNext(hour, minute);
+
+  timer = setTimeout(async () => {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (lastSentDate !== today) {
+      try {
+        const success = await generateAndSend();
+        if (success) {
+          lastSentDate = today;
+        }
+      } catch (err) {
+        logger.error('Honeypot daily digest failed', { error: err.message });
+      }
+    }
+    scheduleNext();
+  }, delay);
+}
+
 export function startDigest() {
   if (!config.honeypot.dailyDigest.enabled) return;
 
   // Guard against multiple calls — clear existing timer before setting new one
   if (timer) {
-    clearInterval(timer);
+    clearTimeout(timer);
     timer = null;
   }
 
+  scheduleNext();
+
   const { hour, minute } = config.honeypot.dailyDigest;
-
-  timer = setInterval(() => {
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    if (now.getHours() === hour && now.getMinutes() === minute && lastSentDate !== today) {
-      lastSentDate = today;
-      generateAndSend().catch(err => {
-        logger.error('Honeypot daily digest failed', { error: err.message });
-        lastSentDate = null; // reset so digest is retried at the next scheduled check
-      });
-    }
-  }, 60_000);
-
   logger.info(`Honeypot daily digest scheduled at ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
 }
 
 export function stopDigest() {
   if (timer) {
-    clearInterval(timer);
+    clearTimeout(timer);
     timer = null;
   }
 }
@@ -43,12 +61,12 @@ async function generateAndSend() {
   const summary = honeypotStats.getSummary();
 
   if (summary.connectionsLast24h === 0) {
-    await sendMessage(
+    const sent = await sendMessage(
       `\u{1F36F} <b>Honeypot Daily Digest</b>\n\n` +
       `No honeypot activity in the last 24 hours.`
     );
-    logger.info('Honeypot daily digest sent (no activity)');
-    return;
+    if (sent) logger.info('Honeypot daily digest sent (no activity)');
+    return sent;
   }
 
   const lines = [
@@ -76,7 +94,7 @@ async function generateAndSend() {
 
   // Top 3 credential attempts — extract user/pass patterns from SSH-like payloads (last 24h only)
   const now24h = Date.now() - 86400_000;
-  const credCounts = {};
+  const credCounts = Object.create(null);
   for (const conn of honeypotStats.getAll()) {
     if (new Date(conn.timestamp).getTime() <= now24h) continue;
     if (!conn.payload) continue;
@@ -95,8 +113,9 @@ async function generateAndSend() {
     }
   }
 
-  await sendMessage(lines.join('\n'));
-  logger.info('Honeypot daily digest sent');
+  const sent = await sendMessage(lines.join('\n'));
+  if (sent) logger.info('Honeypot daily digest sent');
+  return sent;
 }
 
 function extractCredentials(payload) {

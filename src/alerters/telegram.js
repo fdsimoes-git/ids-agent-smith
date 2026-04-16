@@ -128,17 +128,21 @@ export async function sendAgentSmithGif(ip) {
 export async function sendMessage(text, replyMarkup) {
   if (!config.telegram.botToken || !config.telegram.chatId) {
     logger.debug('Telegram not configured, message dropped');
-    return;
+    return false;
   }
 
-  queue.push({ type: 'message', text, replyMarkup });
+  let resolve;
+  const promise = new Promise(r => { resolve = r; });
+  queue.push({ type: 'message', text, replyMarkup, resolve });
   if (!draining) drainQueue();
+  return promise;
 }
 
 async function drainQueue() {
   draining = true;
   while (queue.length > 0) {
     const item = queue.shift();
+    let success = false;
     try {
       let endpoint, body;
       if (item.type === 'animation') {
@@ -160,6 +164,7 @@ async function drainQueue() {
         if (item.replyMarkup) body.reply_markup = item.replyMarkup;
       } else {
         logger.error('Unknown Telegram queue item type', { type: item.type });
+        if (item.resolve) item.resolve(false);
         continue;
       }
 
@@ -171,10 +176,13 @@ async function drainQueue() {
       if (!res.ok) {
         const errBody = await res.text();
         logger.error('Telegram API error', { status: res.status, body: errBody.slice(0, 200) });
+      } else {
+        success = true;
       }
     } catch (err) {
       logger.error('Telegram send failed', { error: err.message });
     }
+    if (item.resolve) item.resolve(success);
     // Telegram rate limit: ~30 msgs/sec, but be conservative
     if (queue.length > 0) await new Promise(r => setTimeout(r, 1000));
   }
