@@ -650,7 +650,7 @@ export function generateHtmlReport() {
 <section>
   <div class="panel-grid">
     <div class="panel">
-      <h3>Attack Timeline — Last 24h (hourly)</h3>
+      <h3>Attack Timeline — Last 24h (hourly, UTC)</h3>
       ${timelineSvg}
     </div>
     <div class="panel">

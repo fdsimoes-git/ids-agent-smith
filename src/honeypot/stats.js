@@ -135,12 +135,14 @@ class HoneypotStats {
     const vectorBreakdown = { ssh: 0, http: 0, tcp: 0 };
     const isoAlpha2 = /^[A-Z]{2}$/;
 
-    // Rolling 24h timeline: 24 consecutive UTC-hour buckets ending at the
-    // current hour. Keyed by bucket-start epoch ms so ordering is chronological
-    // even across midnight (fixes out-of-order hour-of-day aggregation).
+    // Rolling 24h timeline: hour-aligned UTC buckets covering the full last-24h
+    // window. firstHourStart goes back 24 full hours from the start of the
+    // current hour so the bucket containing `now - 24h` is included (otherwise
+    // events from the partial first hour are dropped). Keyed by bucket-start
+    // epoch ms so ordering is chronological even across midnight.
     const HOUR_MS = 3_600_000;
     const nowHourStart = Math.floor(now / HOUR_MS) * HOUR_MS;
-    const firstHourStart = nowHourStart - 23 * HOUR_MS;
+    const firstHourStart = nowHourStart - 24 * HOUR_MS;
 
     for (const conn of recent) {
       byIp[conn.ip] = (byIp[conn.ip] || 0) + 1;
