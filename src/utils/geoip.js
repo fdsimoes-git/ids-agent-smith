@@ -8,6 +8,8 @@ import logger from './logger.js';
 const GEOIP_API_URL = process.env.GEOIP_API_URL || 'http://ip-api.com';
 
 const cache = new Map();
+const negCache = new Map();       // failed-lookup negative cache (ip → expiry timestamp)
+const NEG_CACHE_TTL = 3_600_000;  // 1 hour
 const inFlight = new Map();
 const MAX_CACHE = 1000;
 
@@ -41,8 +43,12 @@ const PRIVATE_RANGES = [
   /^fe80:/i,
 ];
 
+function stripMappedPrefix(ip) {
+  return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+}
+
 function isPrivateIp(ip) {
-  return PRIVATE_RANGES.some(re => re.test(ip));
+  return PRIVATE_RANGES.some(re => re.test(stripMappedPrefix(ip)));
 }
 
 function httpGet(url) {
@@ -79,6 +85,12 @@ export async function lookupIp(ip) {
 
   if (cache.has(ip)) return cache.get(ip);
 
+  // Short-lived negative cache — avoid re-querying IPs that recently failed
+  if (negCache.has(ip)) {
+    if (Date.now() < negCache.get(ip)) return null;
+    negCache.delete(ip);
+  }
+
   // Coalesce concurrent lookups for the same IP into a single outbound request
   if (inFlight.has(ip)) return inFlight.get(ip);
 
@@ -96,6 +108,7 @@ export async function lookupIp(ip) {
 
       if (data.status === 'fail') {
         logger.debug('Geo-IP lookup failed', { ip, message: data.message });
+        negCache.set(ip, Date.now() + NEG_CACHE_TTL);
         return null;
       }
 
@@ -120,6 +133,7 @@ export async function lookupIp(ip) {
       return geo;
     } catch (err) {
       logger.debug('Geo-IP lookup error', { ip, error: err.message });
+      negCache.set(ip, Date.now() + NEG_CACHE_TTL);
       return null;
     } finally {
       inFlight.delete(ip);
@@ -132,5 +146,6 @@ export async function lookupIp(ip) {
 
 export function clearCache() {
   cache.clear();
+  negCache.clear();
   inFlight.clear();
 }
