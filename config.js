@@ -52,6 +52,11 @@ const config = {
   threatHistoryPath: process.env.THREAT_HISTORY_PATH || '/var/lib/idps-agent/threat-history.json',
   aiDecisionLogPath: process.env.AI_DECISION_LOG_PATH || '/var/log/idps-agent/ai-decisions.log',
 
+  memoryAlertMb: (() => {
+    const parsed = parseInt(process.env.MEMORY_ALERT_MB, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 256;
+  })(),
+
   geoip: {
     enabled: process.env.GEOIP_ENABLED !== 'false', // enabled by default
   },
@@ -110,6 +115,16 @@ const config = {
         `using intersection: [${validSshPorts.join(', ')}]`
       );
     }
+    const maxFileMb = (() => {
+      const parsed = parseInt(process.env.HONEYPOT_MAX_FILE_MB, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
+    })();
+    const archiveEnabled = process.env.HONEYPOT_ARCHIVE_ENABLED !== 'false';
+    const archiveNdjson = process.env.HONEYPOT_ARCHIVE_NDJSON === 'true';
+    const archiveNdjsonMaxMb = (() => {
+      const parsed = parseInt(process.env.HONEYPOT_ARCHIVE_NDJSON_MAX_MB, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+    })();
     return {
       enabled,
       ports,
@@ -119,6 +134,11 @@ const config = {
       maxConnectionMs: 30_000,
       maxRecords: 10_000,
       retentionDays: 7,
+      maxFileMb,
+      maxArchives: 3,
+      archiveEnabled,
+      archiveNdjson,
+      archiveNdjsonMaxMb,
       http: {
         enabled: httpEnabled,
         port: httpPort,

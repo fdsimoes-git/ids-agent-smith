@@ -1,5 +1,8 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile, writeFile, mkdir, stat, readdir, unlink } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { createGzip } from 'node:zlib';
+import { pipeline } from 'node:stream/promises';
+import { basename, dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import config from '../../config.js';
 import logger from '../utils/logger.js';
@@ -11,6 +14,8 @@ function hashPassword(password) {
   return createHash('sha256').update(password).digest('hex').slice(0, 16);
 }
 
+const ROTATE_COOLDOWN_MS = 60 * 60 * 1000;
+
 class HoneypotStats {
   constructor() {
     this.connections = [];
@@ -18,6 +23,7 @@ class HoneypotStats {
     this.saveTimer = null;
     this.isSaving = false;
     this.savePromise = null;
+    this.lastRotateMs = 0;
   }
 
   async load() {
@@ -237,6 +243,7 @@ class HoneypotStats {
       try {
         const dir = dirname(config.honeypot.dataPath);
         await mkdir(dir, { recursive: true }).catch(() => {});
+        await this.rotateIfNeeded();
         await writeFile(
           config.honeypot.dataPath,
           JSON.stringify({ connections: this.connections }, null, 2),
@@ -251,6 +258,178 @@ class HoneypotStats {
       }
     })();
     return this.savePromise;
+  }
+
+  async rotateIfNeeded() {
+    if (!config.honeypot.archiveEnabled) return;
+    if (Date.now() - this.lastRotateMs < ROTATE_COOLDOWN_MS) return;
+
+    const dataPath = config.honeypot.dataPath;
+    const limitBytes = config.honeypot.maxFileMb * 1024 * 1024;
+    let size;
+    try {
+      const info = await stat(dataPath);
+      size = info.size;
+    } catch (err) {
+      if (err.code === 'ENOENT') return;
+      throw err;
+    }
+    if (size < limitBytes) return;
+
+    // Advance lastRotateMs before attempting archive writes so a failure
+    // (permissions, disk full, etc.) is still throttled to ROTATE_COOLDOWN_MS
+    // and doesn't trigger a retry on every subsequent save().
+    this.lastRotateMs = Date.now();
+
+    const dir = dirname(dataPath);
+    const base = basename(dataPath);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archivePath = join(dir, `${base}.${timestamp}.gz`);
+
+    // When NDJSON export is enabled, read the file once so both archives
+    // derive from identical content. Otherwise stream straight from disk so
+    // RSS stays flat even on large files (rotation is triggered by size).
+    // Above archiveNdjsonMaxMb the buffer + JSON.parse cost would defeat the
+    // whole memory-bounded goal of this feature, so skip NDJSON in that case.
+    let fileContent = null;
+    const ndjsonLimitBytes = config.honeypot.archiveNdjsonMaxMb * 1024 * 1024;
+    const ndjsonOversized = config.honeypot.archiveNdjson && size > ndjsonLimitBytes;
+    if (ndjsonOversized) {
+      logger.warn('Skipping NDJSON export: source file exceeds archiveNdjsonMaxMb', {
+        path: dataPath,
+        sizeBytes: size,
+        limitBytes: ndjsonLimitBytes,
+      });
+    }
+    if (config.honeypot.archiveNdjson && !ndjsonOversized) {
+      try {
+        fileContent = await readFile(dataPath);
+      } catch (err) {
+        logger.error('Honeypot stats rotation failed: could not read source file', {
+          path: dataPath,
+          error: err.message,
+        });
+        return;
+      }
+    }
+
+    try {
+      if (fileContent !== null) {
+        const gzip = createGzip();
+        const done = pipeline(gzip, createWriteStream(archivePath));
+        gzip.end(fileContent);
+        await done;
+      } else {
+        await pipeline(
+          createReadStream(dataPath),
+          createGzip(),
+          createWriteStream(archivePath)
+        );
+      }
+      logger.info(`Honeypot stats archived: ${size} bytes to ${archivePath}`);
+    } catch (err) {
+      logger.error('Honeypot stats rotation failed: snapshot archive write error', {
+        path: archivePath,
+        error: err.message,
+      });
+      return;
+    }
+
+    if (fileContent !== null) {
+      const ndjsonPath = join(dir, `${base}.${timestamp}.ndjson.gz`);
+      try {
+        await this.writeNdjsonArchive(ndjsonPath, fileContent);
+        logger.info(`Honeypot stats NDJSON export: ${ndjsonPath}`);
+      } catch (err) {
+        logger.error('Failed to write NDJSON archive', {
+          path: ndjsonPath,
+          error: err.message,
+        });
+      }
+    }
+
+    // Keep in-memory connections intact. The next save() rewrites the file
+    // with the bounded current state (maxRecords + retentionDays), which
+    // prunes oldest records from disk without wiping runtime stats.
+    await this.pruneArchives();
+  }
+
+  async writeNdjsonArchive(ndjsonPath, fileContent) {
+    // Parse the same buffer used for the .gz snapshot so both archives
+    // correspond to identical data, not live in-memory state that may have
+    // mutated during the pipeline.
+    const parsed = JSON.parse(fileContent.toString('utf8'));
+    const connections = Array.isArray(parsed.connections) ? parsed.connections : [];
+    const gzip = createGzip();
+    const done = pipeline(gzip, createWriteStream(ndjsonPath));
+    for (const conn of connections) {
+      if (!gzip.write(JSON.stringify(conn) + '\n')) {
+        await new Promise(resolve => gzip.once('drain', resolve));
+      }
+    }
+    gzip.end();
+    await done;
+  }
+
+  async pruneArchives() {
+    const dir = dirname(config.honeypot.dataPath);
+    const base = basename(config.honeypot.dataPath);
+    const prefix = `${base}.`;
+    const suffix = '.gz';
+    const ndjsonSuffix = '.ndjson';
+    try {
+      const entries = await readdir(dir);
+      // Group by rotation timestamp so the snapshot (`{base}.{ts}.gz`) and
+      // its NDJSON export (`{base}.{ts}.ndjson.gz`) are pruned together and
+      // count as one archive toward maxArchives.
+      const groups = new Map();
+      for (const name of entries) {
+        if (!name.startsWith(prefix) || !name.endsWith(suffix)) continue;
+        const stem = name.slice(prefix.length, -suffix.length);
+        const key = stem.endsWith(ndjsonSuffix)
+          ? stem.slice(0, -ndjsonSuffix.length)
+          : stem;
+        const paths = groups.get(key) || [];
+        paths.push(join(dir, name));
+        groups.set(key, paths);
+      }
+      if (groups.size <= config.honeypot.maxArchives) return;
+
+      const groupInfo = await Promise.all(
+        Array.from(groups.values()).map(async paths => {
+          const files = (
+            await Promise.all(
+              paths.map(async path => {
+                try {
+                  const info = await stat(path);
+                  return { path, mtime: info.mtimeMs };
+                } catch {
+                  return null;
+                }
+              })
+            )
+          ).filter(Boolean);
+          if (!files.length) return null;
+          return {
+            paths: files.map(f => f.path),
+            mtime: Math.max(...files.map(f => f.mtime)),
+          };
+        })
+      );
+      const sorted = groupInfo
+        .filter(Boolean)
+        .sort((a, b) => b.mtime - a.mtime);
+      const toDelete = sorted.slice(config.honeypot.maxArchives);
+      for (const group of toDelete) {
+        for (const path of group.paths) {
+          await unlink(path).catch(err => {
+            logger.warn('Failed to delete old honeypot archive', { path, error: err.message });
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn('Failed to prune honeypot archives', { error: err.message });
+    }
   }
 
   async stop() {
