@@ -396,6 +396,7 @@ export async function startHttpHoneypot(onThreat) {
           port,
           timestamp,
           payload: `${method} ${pathname} UA:${userAgent.slice(0, 100)}`,
+          source: 'http',
         });
       }
 
@@ -427,6 +428,7 @@ export async function startHttpHoneypot(onThreat) {
           payload: `POST ${pathname} user:${creds.username || '(empty)'}`,
           username: creds.username || null,
           passwordHash,
+          source: 'http',
         });
 
         // Emit threat for credential attempts
