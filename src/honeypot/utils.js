@@ -17,8 +17,10 @@ export function maskPassword(password) {
  */
 export function redactCredentialsInText(text) {
   if (!text) return text;
+  // Require a delimiter (start-of-string, whitespace, `&`, or `;`) before the
+  // key so names like `compass=foo` are not partially matched as `pass=foo`.
   return text.replace(
-    /((?:user(?:name)?|login|pass(?:word)?)\s*[=:]\s*)(\S+)/gi,
-    '$1[REDACTED]'
+    /(^|[\s&;])((?:user(?:name)?|login|pass(?:word)?)\s*[=:]\s*)(\S+)/gi,
+    '$1$2[REDACTED]'
   );
 }
