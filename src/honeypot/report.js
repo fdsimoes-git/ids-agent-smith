@@ -17,7 +17,8 @@ export function generateAsciiReport() {
     for (const { ip, count, geo } of summary.topIps) {
       const barLen = Math.max(1, Math.round((count / maxCount) * 20));
       const bar = '#'.repeat(barLen);
-      const country = geo?.countryCode ? ` [${geo.countryCode}]` : '';
+      const cc = geo?.countryCode;
+      const country = (cc && /^[A-Z]{2}$/.test(cc)) ? ` [${cc}]` : '';
       lines.push(`  ${ip.padEnd(18)} ${bar} ${count}${country}`);
     }
     lines.push('');
@@ -84,7 +85,8 @@ export function generateTelegramReport() {
     lines.push('');
     lines.push('<b>Top Attacker IPs:</b>');
     for (const { ip, count, geo } of summary.topIps.slice(0, 5)) {
-      const flag = geo?.countryCode ? ` ${countryFlag(geo.countryCode)} ${geo.countryCode}` : '';
+      const cc = geo?.countryCode;
+      const flag = (cc && /^[A-Z]{2}$/.test(cc)) ? ` ${countryFlag(cc)} ${escapeHtml(cc)}` : '';
       lines.push(`  <code>${escapeHtml(ip)}</code>${flag} — ${count} hits`);
     }
   }
@@ -93,7 +95,8 @@ export function generateTelegramReport() {
     lines.push('');
     lines.push('<b>Top Countries:</b>');
     for (const { country, countryCode, count } of summary.topCountries.slice(0, 5)) {
-      lines.push(`  ${countryFlag(countryCode)} ${escapeHtml(country || countryCode)} — ${count} hits`);
+      const safeCode = /^[A-Z]{2}$/.test(countryCode) ? countryCode : '';
+      lines.push(`  ${countryFlag(safeCode)} ${escapeHtml(country || safeCode)} — ${count} hits`);
     }
   }
 

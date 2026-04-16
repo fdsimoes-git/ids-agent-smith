@@ -11,8 +11,10 @@ const cache = new Map();
 const inFlight = new Map();
 const MAX_CACHE = 1000;
 
-// Fixed-window rate limiter: 45 req/min for ip-api.com free tier.
-// The window resets every 60s; no partial refills, so we never exceed the cap.
+// Fixed-window rate limiter: allows up to 45 requests per 60-second window
+// for the ip-api.com free tier. The counter resets when the window elapses —
+// this is *not* a sliding/rolling window, so up to 90 requests can occur in
+// a 60-second span that straddles two windows.
 const RATE_LIMIT = 45;
 const RATE_WINDOW_MS = 60_000;
 let windowRequestCount = 0;
@@ -35,8 +37,7 @@ const PRIVATE_RANGES = [
   /^0\./,
   /^169\.254\./,
   /^::1$/,
-  /^fc00:/i,
-  /^fd/i,
+  /^f[cd]/i,   // fc00::/7 — covers both fc… and fd… ULA prefixes
   /^fe80:/i,
 ];
 

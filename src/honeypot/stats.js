@@ -88,17 +88,17 @@ class HoneypotStats {
     const last24h = now - 86400_000;
     const recent = this.connections.filter(c => new Date(c.timestamp).getTime() > last24h);
 
-    const byIp = {};
-    const byPort = {};
-    const byHour = {};
-    const byCountry = {};
-    const ipGeo = {};
+    const byIp = Object.create(null);
+    const byPort = Object.create(null);
+    const byHour = Object.create(null);
+    const byCountry = Object.create(null);
+    const ipGeo = Object.create(null);
 
     for (const conn of this.connections) {
       byIp[conn.ip] = (byIp[conn.ip] || 0) + 1;
       byPort[conn.port] = (byPort[conn.port] || 0) + 1;
 
-      if (conn.geo?.countryCode) {
+      if (conn.geo?.countryCode && /^[A-Z]{2}$/.test(conn.geo.countryCode)) {
         const key = conn.geo.countryCode;
         byCountry[key] = (byCountry[key] || { country: conn.geo.country, countryCode: key, count: 0 });
         byCountry[key].count++;
