@@ -142,12 +142,15 @@ class HoneypotStats {
       const source = inferSource(conn);
       if (source in vectorBreakdown) vectorBreakdown[source]++;
 
-      // Track ports and latest payload per IP for expandable detail rows
+      // Track ports and latest payloads per IP for expandable detail rows.
+      // Iteration is oldest→newest, so appending and trimming from the front
+      // keeps the 3 most recent payloads per IP.
       if (!ipPorts[conn.ip]) ipPorts[conn.ip] = Object.create(null);
       ipPorts[conn.ip][conn.port] = (ipPorts[conn.ip][conn.port] || 0) + 1;
       if (conn.payload) {
         const list = ipPayloads[conn.ip] || (ipPayloads[conn.ip] = []);
-        if (list.length < 3) list.push(conn.payload);
+        list.push(conn.payload);
+        if (list.length > 3) list.shift();
       }
 
       const rawCode = conn.geo?.countryCode;

@@ -398,6 +398,12 @@ function generateVectorDonutSvg(vectorBreakdown) {
   <div class="legend">${legend.join('')}</div>`;
 }
 
+// TODO(issue #27): remaining items from the original issue scope:
+//   - Filterable credential attempts table (text filter + type filter).
+//     Currently only sortable; no filter UI is rendered.
+//   - Print-friendly stylesheet (@media print) — no dedicated print CSS yet.
+//   - Replace hand-rolled SVG charts with embedded Plotly.js, which the issue
+//     calls out as the preferred renderer (must remain self-contained, no CDN).
 export function generateHtmlReport() {
   const summary = honeypotStats.getSummary();
   const hasTopCountryData = summary.topCountries && summary.topCountries.length > 0;
@@ -495,7 +501,6 @@ export function generateHtmlReport() {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="60">
 <title>Honeypot Report — IDS Agent</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
@@ -558,7 +563,8 @@ export function generateHtmlReport() {
 
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
-  th { color: var(--text-dim); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; background: var(--bg-elev-2); cursor: pointer; user-select: none; }
+  th { color: var(--text-dim); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; background: var(--bg-elev-2); }
+  th.sortable { cursor: pointer; user-select: none; }
   th.sortable::after { content: " ⇅"; color: var(--text-dimmer); font-size: .75rem; }
   th.sort-asc::after { content: " ↑"; color: var(--accent); }
   th.sort-desc::after { content: " ↓"; color: var(--accent); }
@@ -623,7 +629,7 @@ export function generateHtmlReport() {
   </div>
   <div class="meta">
     <div>Generated: <span>${new Date().toISOString()}</span></div>
-    <div>Auto-refresh: 60s</div>
+    <div id="refresh-status">Auto-refresh: off · append <code>?refresh=60</code> to enable</div>
   </div>
 </header>
 
@@ -699,6 +705,7 @@ ${hasTopCountryData ? `
 <section>
   <h2>Credential Attempts</h2>
   <div class="table-wrap">
+  <!-- TODO(issue #27): add filter UI (type dropdown + free-text search) above this table. -->
   <table class="sortable-table">
     <thead><tr><th class="sortable">Type</th><th class="sortable">IP</th><th class="sortable">Time</th><th class="sortable">Username</th><th>Password</th></tr></thead>
     <tbody>
@@ -741,12 +748,25 @@ ${hasTopCountryData ? `
   </div>
 </section>
 
-<div class="footer">IDS Agent Smith · Page auto-refreshes every 60 seconds</div>
+<div class="footer">IDS Agent Smith · append <code>?refresh=60</code> to the URL to enable auto-refresh</div>
 
 </div>
 
 <script>
 (function() {
+  // Opt-in auto-refresh via ?refresh=<seconds>. Default is off so saved/offline
+  // reports and printed views keep user state (expanded rows, sort, scroll).
+  var params = new URLSearchParams(window.location.search);
+  var refresh = parseInt(params.get('refresh') || '', 10);
+  if (Number.isFinite(refresh) && refresh > 0) {
+    var meta = document.createElement('meta');
+    meta.httpEquiv = 'refresh';
+    meta.content = String(refresh);
+    document.head.appendChild(meta);
+    var status = document.getElementById('refresh-status');
+    if (status) status.textContent = 'Auto-refresh: ' + refresh + 's';
+  }
+
   // Expandable IP detail rows
   document.querySelectorAll('.toggle').forEach(function(btn) {
     btn.addEventListener('click', function() {
@@ -779,9 +799,19 @@ ${hasTopCountryData ? `
         var asc = !th.classList.contains('sort-asc');
         headers.forEach(function(h) { h.classList.remove('sort-asc', 'sort-desc'); });
         th.classList.add(asc ? 'sort-asc' : 'sort-desc');
+        var ipv4Re = /^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$/;
         rows.sort(function(a, b) {
           var av = (a.cells[colIdx] && a.cells[colIdx].innerText || '').trim();
           var bv = (b.cells[colIdx] && b.cells[colIdx].innerText || '').trim();
+          // Compare IPv4 addresses octet-by-octet so 10.0.0.2 sorts before 192.168.1.1
+          if (ipv4Re.test(av) && ipv4Re.test(bv)) {
+            var aOct = av.split('.').map(Number);
+            var bOct = bv.split('.').map(Number);
+            for (var i = 0; i < 4; i++) {
+              if (aOct[i] !== bOct[i]) return asc ? aOct[i] - bOct[i] : bOct[i] - aOct[i];
+            }
+            return 0;
+          }
           var an = parseFloat(av.replace(/[^0-9.\\-]/g, ''));
           var bn = parseFloat(bv.replace(/[^0-9.\\-]/g, ''));
           if (!isNaN(an) && !isNaN(bn) && av.match(/^[:\\d\\s.,\\-]+$/)) {
