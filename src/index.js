@@ -17,6 +17,7 @@ import { executeAction, syncBannedIps } from './ai/actions.js';
 import { startApiServer, stopApiServer } from './api/server.js';
 import { startBot, stopBot } from './bot/commands.js';
 import { startHoneypot, stopHoneypot } from './honeypot/server.js';
+import { startHttpHoneypot, stopHttpHoneypot } from './honeypot/http.js';
 
 const cooldown = new CooldownManager(config.alertCooldownMs);
 const tailers = [];
@@ -120,6 +121,14 @@ async function shutdown(signal) {
     }
   }
 
+  if (config.honeypot.http.enabled) {
+    try {
+      await stopHttpHoneypot();
+    } catch (err) {
+      logger.error('Error stopping HTTP honeypot', { error: err.message });
+    }
+  }
+
   for (const tailer of tailers) {
     try {
       await tailer.stop();
@@ -179,6 +188,20 @@ async function main() {
     }) || [];
   }
 
+  // HTTP honeypot (optional) — fake admin login pages
+  let httpHoneypotPort = null;
+  if (config.honeypot.http.enabled) {
+    try {
+      httpHoneypotPort = await startHttpHoneypot(threat => {
+        handleThreat(threat).catch(err => {
+          logger.error('HTTP honeypot threat handler error', { error: err.message });
+        });
+      });
+    } catch (err) {
+      logger.error('Failed to start HTTP honeypot', { error: err.message });
+    }
+  }
+
   // HTTP API
   startApiServer(store);
 
@@ -209,6 +232,9 @@ async function main() {
       ? honeypotPorts.join(', ')
       : honeypotPorts.slice(0, maxShow).join(', ') + ` + ${honeypotPorts.length - maxShow} more`;
     startupLines.push(`Honeypot: <b>ON</b> (ports: ${portStr})`);
+  }
+  if (httpHoneypotPort) {
+    startupLines.push(`HTTP Honeypot: <b>ON</b> (port: ${httpHoneypotPort})`);
   }
   await sendMessage(startupLines.join('\n'));
 

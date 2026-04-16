@@ -252,8 +252,8 @@ async function handleMessage(msg, store, memory) {
       }
 
       case '/honeypot': {
-        if (!config.honeypot?.enabled) {
-          await sendMessage('\u26A0\uFE0F Honeypot is not enabled. Set <code>HONEYPOT_ENABLED=true</code> to activate.');
+        if (!config.honeypot?.enabled && !config.honeypot?.http?.enabled) {
+          await sendMessage('\u26A0\uFE0F Honeypot is not enabled. Set <code>HONEYPOT_ENABLED=true</code> or <code>HONEYPOT_HTTP_ENABLED=true</code> to activate.');
           break;
         }
         const hpReport = generateTelegramReport();
