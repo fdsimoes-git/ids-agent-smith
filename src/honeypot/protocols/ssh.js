@@ -37,17 +37,27 @@ export function handleSshConnection(socket, port, onThreat) {
   socket.write(SSH_BANNER);
 
   socket.on('data', chunk => {
-    // Accumulate raw payload (bounded)
-    if (payloadBytes < config.honeypot.maxPayloadBytes) {
-      const remaining = config.honeypot.maxPayloadBytes - payloadBytes;
-      const slice = remaining < chunk.length ? chunk.subarray(0, remaining) : chunk;
+    // Bound the chunk to maxPayloadBytes so that version parsing,
+    // credential extraction, and payload storage never process or
+    // allocate beyond the configured limit.
+    const maxBytes = config.honeypot.maxPayloadBytes;
+    const bounded = chunk.length > maxBytes ? chunk.subarray(0, maxBytes) : chunk;
+
+    // Accumulate raw payload (bounded).
+    // Copy via Buffer.from() so the small slice does not retain
+    // a reference to the original (potentially large) Buffer.
+    if (payloadBytes < maxBytes) {
+      const remaining = maxBytes - payloadBytes;
+      const slice = remaining < bounded.length
+        ? Buffer.from(bounded.subarray(0, remaining))
+        : Buffer.from(bounded);
       payloadBuffers.push(slice);
       payloadBytes += slice.length;
     }
 
     // Buffer data until a newline is found before parsing SSH identification string
     if (!versionParsed) {
-      versionBuffer += chunk.toString('utf8');
+      versionBuffer += bounded.toString('utf8');
       const nlIndex = versionBuffer.indexOf('\n');
       if (nlIndex !== -1) {
         versionParsed = true;
@@ -65,7 +75,7 @@ export function handleSshConnection(socket, port, onThreat) {
     // Real SSH clients encrypt auth, but many bots/scanners send plaintext
     // or use custom protocols that leak username/password strings.
     if (credentials.length < MAX_CREDENTIALS_PER_CONNECTION) {
-      extractCredentials(chunk, credentials);
+      extractCredentials(bounded, credentials);
     }
 
     if (payloadBytes >= config.honeypot.maxPayloadBytes) {
