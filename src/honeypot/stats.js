@@ -55,6 +55,11 @@ class HoneypotStats {
     if (event.username) entry.username = event.username;
     if (event.passwordHash) entry.passwordHash = event.passwordHash;
 
+    // Enriched SSH fields (only present for SSH honeypot ports)
+    if (event.banner) entry.banner = event.banner;
+    if (event.clientVersion) entry.clientVersion = event.clientVersion;
+    if (event.credentials) entry.credentials = event.credentials;
+
     // Push immediately so max-records trimming stays accurate during bursts
     this.connections.push(entry);
     this.dirty = true;
@@ -149,6 +154,28 @@ class HoneypotStats {
       .reverse()
       .map(c => ({ ip: c.ip, port: c.port, timestamp: c.timestamp, payload: c.payload, geo: c.geo || null }));
 
+    // SSH-specific aggregations
+    const sshConnections = this.connections.filter(c => c.banner || c.clientVersion);
+    const clientVersions = {};
+    const allCredentials = [];
+    for (const conn of sshConnections) {
+      if (conn.clientVersion) {
+        clientVersions[conn.clientVersion] = (clientVersions[conn.clientVersion] || 0) + 1;
+      }
+      if (conn.credentials) {
+        for (const cred of conn.credentials) {
+          allCredentials.push({ ip: conn.ip, timestamp: conn.timestamp, ...cred });
+        }
+      }
+    }
+
+    const topClientVersions = Object.entries(clientVersions)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([version, count]) => ({ version, count }));
+
+    const recentCredentials = allCredentials.slice(-20).reverse();
+
     return {
       totalConnections: this.connections.length,
       connectionsLast24h: recent.length,
@@ -160,6 +187,11 @@ class HoneypotStats {
       topCountries,
       hourlyLast24h: hourly,
       recentPayloads,
+      ssh: {
+        totalSshConnections: sshConnections.length,
+        topClientVersions,
+        recentCredentials,
+      },
     };
   }
 

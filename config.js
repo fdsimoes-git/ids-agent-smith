@@ -64,6 +64,12 @@ const config = {
         .map(p => parseInt(p.trim(), 10))
         .filter(p => p > 0 && p < 65536)
     )];
+    const sshPorts = [...new Set(
+      (process.env.HONEYPOT_SSH_PORTS || '2222')
+        .split(',')
+        .map(p => parseInt(p.trim(), 10))
+        .filter(p => p > 0 && p < 65536)
+    )];
     if (enabled && ports.length === 0) {
       throw new Error('HONEYPOT_ENABLED=true but HONEYPOT_PORTS has no valid ports');
     }
@@ -89,6 +95,7 @@ const config = {
     return {
       enabled,
       ports,
+      sshPorts,
       dataPath: process.env.HONEYPOT_DATA_PATH || '/var/log/idps-agent/honeypot.json',
       maxPayloadBytes: 1024,
       maxConnectionMs: 30_000,

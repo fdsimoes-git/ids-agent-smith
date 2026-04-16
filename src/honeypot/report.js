@@ -197,6 +197,24 @@ export function generateAsciiReport() {
     lines.push('');
   }
 
+  // SSH stats
+  if (summary.ssh.totalSshConnections > 0) {
+    lines.push(`SSH CONNECTIONS: ${summary.ssh.totalSshConnections}`);
+    if (summary.ssh.topClientVersions.length > 0) {
+      lines.push('  Client versions:');
+      for (const { version, count } of summary.ssh.topClientVersions.slice(0, 5)) {
+        lines.push(`    ${version} (${count})`);
+      }
+    }
+    if (summary.ssh.recentCredentials.length > 0) {
+      lines.push('  Recent credential attempts:');
+      for (const c of summary.ssh.recentCredentials.slice(0, 5)) {
+        lines.push(`    ${c.ip} — ${c.username || '?'}:${c.password || '?'}`);
+      }
+    }
+    lines.push('');
+  }
+
   // Recent payloads
   if (summary.recentPayloads.length > 0) {
     lines.push('RECENT PAYLOADS:');
@@ -242,6 +260,19 @@ export function generateTelegramReport() {
     lines.push('<b>Most Probed Ports (24h):</b>');
     for (const { port, count } of summary.topPorts.slice(0, 5)) {
       lines.push(`  :${port} — ${count} hits`);
+    }
+  }
+
+  if (summary.ssh.totalSshConnections > 0) {
+    lines.push('');
+    lines.push(`<b>SSH Honeypot:</b> ${summary.ssh.totalSshConnections} connections`);
+    if (summary.ssh.topClientVersions.length > 0) {
+      for (const { version, count } of summary.ssh.topClientVersions.slice(0, 3)) {
+        lines.push(`  <code>${escapeHtml(version)}</code> — ${count}`);
+      }
+    }
+    if (summary.ssh.recentCredentials.length > 0) {
+      lines.push(`  Credential attempts: ${summary.ssh.recentCredentials.length}`);
     }
   }
 
@@ -293,6 +324,14 @@ export function generateHtmlReport() {
 
   const payloadRows = summary.recentPayloads
     .map(p => `<tr><td><code>${esc(p.ip)}</code></td><td>:${p.port}</td><td>${esc(p.timestamp)}</td><td><pre>${esc(p.payload.slice(0, 120))}</pre></td></tr>`)
+    .join('\n');
+
+  const sshClientRows = summary.ssh.topClientVersions
+    .map(({ version, count }) => `<tr><td><code>${esc(version)}</code></td><td>${count}</td></tr>`)
+    .join('\n');
+
+  const sshCredRows = summary.ssh.recentCredentials
+    .map(c => `<tr><td><code>${esc(c.ip)}</code></td><td>${esc(c.timestamp)}</td><td><code>${esc(c.username || '—')}</code></td><td><code>${esc(c.password || '—')}</code></td></tr>`)
     .join('\n');
 
   return `<!DOCTYPE html>
@@ -370,6 +409,25 @@ ${hasTopCountryData ? `
 <div class="hbar-wrap">
   ${hourlyBars || '<p>No data yet</p>'}
 </div>
+
+<h2>SSH Honeypot</h2>
+<div class="summary">
+  <div class="card"><div class="num">${summary.ssh.totalSshConnections}</div><div class="label">SSH Connections</div></div>
+  <div class="card"><div class="num">${summary.ssh.topClientVersions.length}</div><div class="label">Unique Clients</div></div>
+  <div class="card"><div class="num">${summary.ssh.recentCredentials.length}</div><div class="label">Credential Attempts</div></div>
+</div>
+
+<h2>SSH Client Versions</h2>
+<table>
+  <tr><th>Client Version</th><th>Count</th></tr>
+  ${sshClientRows || '<tr><td colspan="2">No SSH connections yet</td></tr>'}
+</table>
+
+<h2>SSH Credential Attempts</h2>
+<table>
+  <tr><th>IP</th><th>Time</th><th>Username</th><th>Password</th></tr>
+  ${sshCredRows || '<tr><td colspan="4">No credentials captured yet</td></tr>'}
+</table>
 
 <h2>Recent Payloads</h2>
 <table>

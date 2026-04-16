@@ -1,0 +1,148 @@
+import config from '../../../config.js';
+import logger from '../../utils/logger.js';
+import { sanitizeIp } from '../../utils/sanitize.js';
+import honeypotStats from '../stats.js';
+
+const SSH_BANNER = 'SSH-2.0-OpenSSH_8.9p1 Ubuntu-3\r\n';
+
+/**
+ * Handle an incoming connection on an SSH honeypot port.
+ * Sends a fake SSH banner, captures the client's version string and any
+ * credential-like data from the raw byte stream, then records enriched stats.
+ */
+export function handleSshConnection(socket, port, onThreat) {
+  const remoteIp = sanitizeIp(socket.remoteAddress?.replace('::ffff:', ''));
+  if (!remoteIp) {
+    socket.destroy();
+    return;
+  }
+
+  const timestamp = new Date().toISOString();
+  let clientVersion = '';
+  let firstLine = true;
+  const payloadBuffers = [];
+  let payloadBytes = 0;
+  const credentials = [];
+
+  socket.setTimeout(10_000);
+  socket.on('timeout', () => socket.destroy());
+
+  const lifetimeTimer = setTimeout(() => socket.destroy(), config.honeypot.maxConnectionMs);
+  socket.on('close', () => clearTimeout(lifetimeTimer));
+
+  // Send the fake SSH banner
+  socket.write(SSH_BANNER);
+
+  socket.on('data', chunk => {
+    // Accumulate raw payload (bounded)
+    if (payloadBytes < config.honeypot.maxPayloadBytes) {
+      const remaining = config.honeypot.maxPayloadBytes - payloadBytes;
+      const slice = remaining < chunk.length ? chunk.subarray(0, remaining) : chunk;
+      payloadBuffers.push(slice);
+      payloadBytes += slice.length;
+    }
+
+    // Capture the client's SSH version string (first line sent)
+    if (firstLine) {
+      firstLine = false;
+      const line = chunk.toString('utf8').split('\n')[0].trim();
+      if (line.startsWith('SSH-')) {
+        clientVersion = line;
+      }
+    }
+
+    // Attempt to extract credentials from raw data.
+    // Real SSH clients encrypt auth, but many bots/scanners send plaintext
+    // or use custom protocols that leak username/password strings.
+    extractCredentials(chunk, credentials);
+
+    if (payloadBytes >= config.honeypot.maxPayloadBytes) {
+      socket.destroy();
+    }
+  });
+
+  socket.on('end', () => finalize());
+  socket.on('close', () => finalize());
+  socket.on('error', () => socket.destroy());
+
+  let finalized = false;
+  function finalize() {
+    if (finalized) return;
+    finalized = true;
+
+    const rawPayload = payloadBuffers.length > 0 ? Buffer.concat(payloadBuffers).toString('utf8') : '';
+    const safePayload = rawPayload.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+
+    honeypotStats.record({
+      ip: remoteIp,
+      port,
+      timestamp,
+      payload: safePayload,
+      banner: SSH_BANNER.trim(),
+      clientVersion: clientVersion || null,
+      credentials: credentials.length > 0 ? credentials : null,
+    });
+
+    const detailParts = [`SSH connection to honeypot port ${port}`];
+    if (clientVersion) detailParts.push(`client: ${clientVersion}`);
+    if (credentials.length > 0) {
+      detailParts.push(`creds attempted: ${credentials.length}`);
+    }
+
+    logger.info(`Honeypot SSH hit: ${remoteIp} -> port ${port}`, {
+      clientVersion,
+      credentials: credentials.length,
+      payload: safePayload.slice(0, 100),
+    });
+
+    if (onThreat) {
+      onThreat({
+        rule: 'honeypot',
+        severity: 'HIGH',
+        ip: remoteIp,
+        endpoint: `SSH:${port}`,
+        timestamp,
+        details: detailParts.join(' — '),
+        suggestedAction: 'block',
+        source: 'honeypot',
+      });
+    }
+  }
+}
+
+/**
+ * Scan a raw data chunk for printable strings that look like credential attempts.
+ * SSH bots sometimes send plaintext user/pass before or outside the encrypted channel.
+ * We also look for common patterns in malformed/custom SSH implementations.
+ */
+function extractCredentials(chunk, credentials) {
+  const text = chunk.toString('utf8');
+
+  // Pattern: lines containing "user" or "pass" keywords (common in bot payloads)
+  const userMatch = text.match(/(?:user(?:name)?|login)\s*[=:]\s*(\S+)/i);
+  const passMatch = text.match(/(?:pass(?:word)?)\s*[=:]\s*(\S+)/i);
+  if (userMatch || passMatch) {
+    credentials.push({
+      username: userMatch?.[1] || null,
+      password: passMatch?.[1] || null,
+    });
+    return;
+  }
+
+  // Printable strings longer than 2 chars that appear after SSH version exchange
+  // may be credential attempts from custom scanners
+  const printable = text.replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim();
+  if (printable.length > 2 && !printable.startsWith('SSH-')) {
+    // Check for null-separated user\0pass pattern (used by some bots)
+    const nullParts = chunk.toString('binary').split('\x00').filter(s => {
+      const clean = s.replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim();
+      return clean.length > 0 && clean.length < 64;
+    });
+    if (nullParts.length >= 2) {
+      credentials.push({
+        username: nullParts[0].replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim(),
+        password: nullParts[1].replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim(),
+      });
+    }
+  }
+}
