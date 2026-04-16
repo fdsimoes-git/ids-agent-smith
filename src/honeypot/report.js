@@ -122,7 +122,7 @@ export function generateHtmlReport() {
     .join('\n');
 
   const topCountryRows = (summary.topCountries || [])
-    .map(({ country, countryCode, count }) => `<tr><td>${esc(countryCode)} ${esc(country)}</td><td>${count}</td><td><div class="bar bar-country" style="width:${pct(count, summary.topCountries[0]?.count)}%"></div></td></tr>`)
+    .map(({ country, countryCode, count }) => `<tr><td>${esc(countryCode)} ${esc(country)}</td><td>${count}</td><td><div class="bar bar-country" style="width:${pct(count, summary.topCountries?.[0]?.count)}%"></div></td></tr>`)
     .join('\n');
 
   const topPortRows = summary.topPorts

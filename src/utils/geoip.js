@@ -10,6 +10,7 @@ const GEOIP_API_URL = process.env.GEOIP_API_URL || 'http://ip-api.com';
 const cache = new Map();
 const negCache = new Map();       // failed-lookup negative cache (ip → expiry timestamp)
 const NEG_CACHE_TTL = 3_600_000;  // 1 hour
+const MAX_NEG_CACHE = 1000;
 const inFlight = new Map();
 const MAX_CACHE = 1000;
 
@@ -42,6 +43,19 @@ const PRIVATE_RANGES = [
   /^f[cd]/i,   // fc00::/7 — covers both fc… and fd… ULA prefixes
   /^fe80:/i,
 ];
+
+/** Prune expired negCache entries; evict oldest if still over MAX_NEG_CACHE. */
+function pruneNegCache() {
+  const now = Date.now();
+  for (const [ip, expiry] of negCache) {
+    if (now >= expiry) negCache.delete(ip);
+  }
+  // If still over limit after pruning, evict oldest (earliest-inserted) entries
+  while (negCache.size >= MAX_NEG_CACHE) {
+    const oldest = negCache.keys().next().value;
+    negCache.delete(oldest);
+  }
+}
 
 function stripMappedPrefix(ip) {
   return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
@@ -108,6 +122,7 @@ export async function lookupIp(ip) {
 
       if (data.status === 'fail') {
         logger.debug('Geo-IP lookup failed', { ip, message: data.message });
+        pruneNegCache();
         negCache.set(ip, Date.now() + NEG_CACHE_TTL);
         return null;
       }
@@ -133,6 +148,7 @@ export async function lookupIp(ip) {
       return geo;
     } catch (err) {
       logger.debug('Geo-IP lookup error', { ip, error: err.message });
+      pruneNegCache();
       negCache.set(ip, Date.now() + NEG_CACHE_TTL);
       return null;
     } finally {
