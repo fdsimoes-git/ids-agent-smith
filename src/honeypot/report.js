@@ -137,16 +137,6 @@ function generateWorldMapSvg(countryCounts) {
   return `<svg viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:960px;height:auto;background:#0a1628;border-radius:8px;display:block;margin:0 auto;">\n${paths}${legend}  </svg>`;
 }
 
-/**
- * Mask a password for display: show up to the first 2 characters followed by
- * asterisks. Passwords of 2 or fewer characters are shown in full (nothing to mask).
- */
-function maskPassword(password) {
-  if (!password || password === '—') return password || '?';
-  if (password.length <= 2) return password;
-  return password.slice(0, 2) + '*'.repeat(Math.min(password.length - 2, 6));
-}
-
 export function generateAsciiReport() {
   const summary = honeypotStats.getSummary();
   const lines = [];
@@ -219,7 +209,7 @@ export function generateAsciiReport() {
     if (summary.ssh.recentCredentials.length > 0) {
       lines.push('  Recent credential attempts:');
       for (const c of summary.ssh.recentCredentials.slice(0, 5)) {
-        lines.push(`    ${c.ip} — ${c.username || '?'}:${maskPassword(c.password)}`);
+        lines.push(`    ${c.ip} — ${c.username || '?'}:${c.password}`);
       }
     }
     lines.push('');
@@ -341,7 +331,7 @@ export function generateHtmlReport() {
     .join('\n');
 
   const sshCredRows = summary.ssh.recentCredentials
-    .map(c => `<tr><td><code>${esc(c.ip)}</code></td><td>${esc(c.timestamp)}</td><td><code>${esc(c.username || '—')}</code></td><td><code>${esc(maskPassword(c.password))}</code></td></tr>`)
+    .map(c => `<tr><td><code>${esc(c.ip)}</code></td><td>${esc(c.timestamp)}</td><td><code>${esc(c.username || '—')}</code></td><td><code>${esc(c.password)}</code></td></tr>`)
     .join('\n');
 
   return `<!DOCTYPE html>
