@@ -222,10 +222,14 @@ function escapeHtml(str) {
 }
 
 function countryFlag(code) {
-  if (!code || code.length !== 2) return '';
-  return String.fromCodePoint(
-    ...code.toUpperCase().split('').map(c => 0x1F1E6 + c.charCodeAt(0) - 65)
-  );
+  if (!code || !/^[A-Z]{2}$/.test(code)) return '';
+  try {
+    return String.fromCodePoint(
+      ...code.split('').map(c => 0x1F1E6 + c.charCodeAt(0) - 65)
+    );
+  } catch {
+    return '';
+  }
 }
 
 function pct(value, max) {

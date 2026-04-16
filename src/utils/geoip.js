@@ -11,25 +11,20 @@ const cache = new Map();
 const inFlight = new Map();
 const MAX_CACHE = 1000;
 
-// Token-bucket rate limiter: 45 req/min for ip-api.com free tier
+// Fixed-window rate limiter: 45 req/min for ip-api.com free tier.
+// The window resets every 60s; no partial refills, so we never exceed the cap.
 const RATE_LIMIT = 45;
 const RATE_WINDOW_MS = 60_000;
-let tokens = RATE_LIMIT;
-let lastRefill = Date.now();
+let windowRequestCount = 0;
+let windowStart = Date.now();
 
-function refillTokens() {
+function canConsume() {
   const now = Date.now();
-  const elapsed = now - lastRefill;
-  if (elapsed >= RATE_WINDOW_MS) {
-    tokens = RATE_LIMIT;
-    lastRefill = now;
-  } else {
-    const refill = Math.floor((elapsed / RATE_WINDOW_MS) * RATE_LIMIT);
-    if (refill > 0) {
-      tokens = Math.min(RATE_LIMIT, tokens + refill);
-      lastRefill = now;
-    }
+  if (now - windowStart >= RATE_WINDOW_MS) {
+    windowRequestCount = 0;
+    windowStart = now;
   }
+  return windowRequestCount < RATE_LIMIT;
 }
 
 const PRIVATE_RANGES = [
@@ -86,12 +81,11 @@ export async function lookupIp(ip) {
   // Coalesce concurrent lookups for the same IP into a single outbound request
   if (inFlight.has(ip)) return inFlight.get(ip);
 
-  refillTokens();
-  if (tokens <= 0) {
+  if (!canConsume()) {
     logger.debug('Geo-IP rate limit reached, skipping lookup', { ip });
     return null;
   }
-  tokens--;
+  windowRequestCount++;
 
   const promise = (async () => {
     try {
