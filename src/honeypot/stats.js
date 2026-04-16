@@ -135,6 +135,13 @@ class HoneypotStats {
     const vectorBreakdown = { ssh: 0, http: 0, tcp: 0 };
     const isoAlpha2 = /^[A-Z]{2}$/;
 
+    // Rolling 24h timeline: 24 consecutive UTC-hour buckets ending at the
+    // current hour. Keyed by bucket-start epoch ms so ordering is chronological
+    // even across midnight (fixes out-of-order hour-of-day aggregation).
+    const HOUR_MS = 3_600_000;
+    const nowHourStart = Math.floor(now / HOUR_MS) * HOUR_MS;
+    const firstHourStart = nowHourStart - 23 * HOUR_MS;
+
     for (const conn of recent) {
       byIp[conn.ip] = (byIp[conn.ip] || 0) + 1;
       byPort[conn.port] = (byPort[conn.port] || 0) + 1;
@@ -167,9 +174,11 @@ class HoneypotStats {
         ipGeo[conn.ip] = conn.geo;
       }
 
-      const hour = new Date(conn.timestamp).getHours();
-      const key = String(hour).padStart(2, '0') + ':00';
-      byHour[key] = (byHour[key] || 0) + 1;
+      const connMs = new Date(conn.timestamp).getTime();
+      const bucketStart = Math.floor(connMs / HOUR_MS) * HOUR_MS;
+      if (bucketStart >= firstHourStart && bucketStart <= nowHourStart) {
+        byHour[bucketStart] = (byHour[bucketStart] || 0) + 1;
+      }
     }
 
     const topIps = Object.entries(byIp)
@@ -198,9 +207,15 @@ class HoneypotStats {
 
     const topCountries = countryCounts.slice(0, 20);
 
-    const hourly = Object.entries(byHour)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([hour, count]) => ({ hour, count }));
+    const hourly = [];
+    for (let ms = firstHourStart; ms <= nowHourStart; ms += HOUR_MS) {
+      const d = new Date(ms);
+      hourly.push({
+        bucket: d.toISOString(),
+        hour: String(d.getUTCHours()).padStart(2, '0') + ':00',
+        count: byHour[ms] || 0,
+      });
+    }
 
     const recentPayloads = this.connections
       .filter(c => c.payload)

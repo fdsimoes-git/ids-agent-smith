@@ -447,8 +447,9 @@ export function generateHtmlReport() {
       const payloadPreview = (payloads || []).length
         ? payloads.map(p => `<pre>${esc(p.slice(0, 200))}</pre>`).join('')
         : '<em>no payload captured</em>';
+      const detailId = `ip-detail-${idx}`;
       return `<tr class="ip-row">
-    <td><button class="toggle" data-target="ip-detail-${idx}" aria-expanded="false">+</button></td>
+    <td><button class="toggle" data-target="${detailId}" aria-controls="${detailId}" aria-expanded="false" aria-label="Toggle details for ${esc(ip)}">+</button></td>
     <td class="flag">${flag}</td>
     <td><code>${esc(ip)}</code> ${cc}<div class="ip-meta">${countryName}${city}</div></td>
     <td class="num">${count}</td>
