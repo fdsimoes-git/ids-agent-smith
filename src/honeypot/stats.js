@@ -1,9 +1,15 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { createHash } from 'node:crypto';
 import config from '../../config.js';
 import logger from '../utils/logger.js';
 import { lookupIp } from '../utils/geoip.js';
 import { maskPassword } from './utils.js';
+
+function hashPassword(password) {
+  if (!password) return null;
+  return createHash('sha256').update(password).digest('hex').slice(0, 16);
+}
 
 class HoneypotStats {
   constructor() {
@@ -61,8 +67,9 @@ class HoneypotStats {
     if (event.clientVersion) entry.clientVersion = event.clientVersion;
     if (event.credentials) {
       entry.credentials = event.credentials.map(c => ({
-        ...c,
+        username: c.username,
         password: maskPassword(c.password),
+        passwordHash: hashPassword(c.password),
       }));
     }
 
@@ -185,7 +192,8 @@ class HoneypotStats {
               ip: conn.ip,
               timestamp: conn.timestamp,
               username: cred.username,
-              password: cred.password,
+              password: maskPassword(cred.password),
+              passwordHash: cred.passwordHash || null,
             });
           }
         }
