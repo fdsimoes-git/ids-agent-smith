@@ -45,12 +45,15 @@ class HoneypotStats {
       this.connections.splice(0, Math.ceil(config.honeypot.maxRecords * 0.1));
     }
 
-    this.connections.push({
+    const entry = {
       ip: event.ip,
       port: event.port,
       timestamp: event.timestamp,
       payload: event.payload || '',
-    });
+    };
+    if (event.username) entry.username = event.username;
+    if (event.passwordHash) entry.passwordHash = event.passwordHash;
+    this.connections.push(entry);
     this.dirty = true;
   }
 

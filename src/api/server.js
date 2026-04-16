@@ -44,7 +44,7 @@ export function startApiServer(store) {
         return;
       }
 
-      if (!config.honeypot.enabled) {
+      if (!config.honeypot.enabled && !config.honeypot.http.enabled) {
         res.writeHead(404);
         res.end(JSON.stringify({ error: 'Honeypot not enabled' }));
         return;
@@ -63,7 +63,7 @@ export function startApiServer(store) {
         return;
       }
 
-      if (!config.honeypot.enabled) {
+      if (!config.honeypot.enabled && !config.honeypot.http.enabled) {
         res.writeHead(404);
         res.end(JSON.stringify({ error: 'Honeypot not enabled' }));
         return;

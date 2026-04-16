@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import config from '../../config.js';
 import logger from '../utils/logger.js';
@@ -276,7 +277,20 @@ function parseBody(req) {
   return new Promise((resolve) => {
     const chunks = [];
     let bytes = 0;
+    let resolved = false;
     const maxBytes = config.honeypot.maxPayloadBytes;
+
+    function done(value) {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      resolve(value);
+    }
+
+    const timer = setTimeout(() => {
+      done(Buffer.concat(chunks).toString('utf8'));
+      req.destroy();
+    }, 10_000);
 
     req.on('data', chunk => {
       if (bytes < maxBytes) {
@@ -285,17 +299,18 @@ function parseBody(req) {
         chunks.push(slice);
         bytes += slice.length;
       }
+
+      if (bytes >= maxBytes) {
+        done(Buffer.concat(chunks).toString('utf8'));
+        req.destroy();
+      }
     });
 
     req.on('end', () => {
-      const raw = Buffer.concat(chunks).toString('utf8');
-      resolve(raw);
+      done(Buffer.concat(chunks).toString('utf8'));
     });
 
-    req.on('error', () => resolve(''));
-
-    // Timeout so slow-POST attacks can't hold the connection
-    setTimeout(() => resolve(Buffer.concat(chunks).toString('utf8')), 10_000);
+    req.on('error', () => done(''));
   });
 }
 
@@ -325,6 +340,12 @@ function extractCredentials(body, type) {
 
 export async function startHttpHoneypot(onThreat) {
   if (!config.honeypot.http.enabled) return null;
+
+  // When TCP honeypot is disabled, HTTP honeypot owns the stats lifecycle
+  if (!config.honeypot.enabled) {
+    await honeypotStats.load();
+    honeypotStats.startAutoSave();
+  }
 
   const port = config.honeypot.http.port;
 
@@ -359,27 +380,44 @@ export async function startHttpHoneypot(onThreat) {
         scanner: scannerTool,
       });
 
-      // Record in honeypot stats
-      honeypotStats.record({
-        ip: remoteIp,
-        port,
-        timestamp,
-        payload: `${method} ${pathname} UA:${userAgent.slice(0, 100)}`,
-      });
+      // Record in honeypot stats (skip POST to login paths — recorded below with credential details)
+      if (!(method === 'POST' && type)) {
+        honeypotStats.record({
+          ip: remoteIp,
+          port,
+          timestamp,
+          payload: `${method} ${pathname} UA:${userAgent.slice(0, 100)}`,
+        });
+      }
 
       // Handle POST (credential capture)
       if (method === 'POST' && type) {
         const body = await parseBody(req);
         const creds = extractCredentials(body, type);
 
+        const passwordHash = creds.password
+          ? createHash('sha256').update(creds.password).digest('hex').slice(0, 16)
+          : null;
+
         logger.warn('HTTP honeypot credential attempt', {
           ip: remoteIp,
           path: pathname,
           type,
           username: creds.username,
+          passwordHash,
           userAgent: userAgent.slice(0, 200),
           scanner: scannerTool,
           timestamp,
+        });
+
+        // Record credential attempt in honeypot stats
+        honeypotStats.record({
+          ip: remoteIp,
+          port,
+          timestamp,
+          payload: `POST ${pathname} user:${creds.username || '(empty)'}`,
+          username: creds.username || null,
+          passwordHash,
         });
 
         // Emit threat for credential attempts
@@ -387,12 +425,13 @@ export async function startHttpHoneypot(onThreat) {
           const details = [
             `Credential attempt on ${pathname} (${type})`,
             creds.username ? `user: ${creds.username}` : null,
+            passwordHash ? `password captured (sha256: ${passwordHash}…)` : null,
             scannerTool ? `tool: ${scannerTool}` : null,
             `UA: ${userAgent.slice(0, 80)}`,
           ].filter(Boolean).join(' — ');
 
           onThreat({
-            rule: 'honeypot',
+            rule: 'honeypot-http',
             severity: 'HIGH',
             ip: remoteIp,
             endpoint: `HTTP:${port}${pathname}`,
@@ -416,7 +455,7 @@ export async function startHttpHoneypot(onThreat) {
         // Emit threat for scanner tools probing login pages
         if (onThreat && scannerTool) {
           onThreat({
-            rule: 'honeypot',
+            rule: 'honeypot-http',
             severity: 'MEDIUM',
             ip: remoteIp,
             endpoint: `HTTP:${port}${pathname}`,
@@ -464,7 +503,7 @@ export async function startHttpHoneypot(onThreat) {
 
 export async function stopHttpHoneypot() {
   if (!server) return;
-  return new Promise(resolve => {
+  await new Promise(resolve => {
     if (server.listening) {
       server.close(resolve);
     } else {
@@ -472,4 +511,9 @@ export async function stopHttpHoneypot() {
     }
     server = null;
   });
+
+  // Flush stats if HTTP honeypot owns the lifecycle
+  if (!config.honeypot.enabled) {
+    await honeypotStats.stop();
+  }
 }
