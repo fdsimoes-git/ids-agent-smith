@@ -152,11 +152,11 @@ function extractCredentials(chunk, credentials) {
     return;
   }
 
-  // Printable strings longer than 2 chars that appear after SSH version exchange
-  // may be credential attempts from custom scanners
-  const printable = text.replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim();
-  if (printable.length > 2 && !printable.startsWith('SSH-')) {
-    // Check for null-separated user\0pass pattern (used by some bots)
+  // Only attempt null-byte credential extraction when the chunk looks like an
+  // SSH_MSG_USERAUTH_REQUEST packet (message type 50 at byte offset 5).
+  // Raw handshake packets contain many null bytes and short ASCII algorithm
+  // names that would otherwise produce false credential entries.
+  if (chunk.length >= 6 && chunk[5] === 50) {
     const nullParts = chunk.toString('latin1').split('\x00').filter(s => {
       const clean = s.replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim();
       return clean.length > 0 && clean.length < 64;
