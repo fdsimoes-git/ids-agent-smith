@@ -77,6 +77,7 @@ sudo nano /etc/systemd/system/idps-agent.service
 | `IDPS_PORT` | No | HTTP API port (default: `3001`) |
 | `HONEYPOT_ENABLED` | No | `true` to enable honeypot decoy ports (default: `false`) |
 | `HONEYPOT_PORTS` | No | Comma-separated decoy ports (default: `2222,8080,3389,5900`) |
+| `HONEYPOT_SSH_PORTS` | No | Ports that emulate an SSH server with banner and credential logging (default: `2222`) |
 | `HONEYPOT_DATA_PATH` | No | Path for honeypot data file (default: `/var/log/idps-agent/honeypot.json`) |
 | `HONEYPOT_HTTP_ENABLED` | No | `true` to enable HTTP honeypot with fake login pages (default: `false`) |
 | `HONEYPOT_HTTP_PORT` | No | HTTP honeypot listen port (default: `8080`) |
@@ -188,12 +189,24 @@ An optional integrated honeypot that listens on configurable decoy ports to dete
 3. Each connection generates a HIGH-severity `honeypot` threat that flows through the standard detection pipeline (alerts, AI analysis, autonomous blocking)
 4. Stats are persisted to disk with a 7-day rolling window
 
+### SSH Banner Emulation
+
+Ports listed in `HONEYPOT_SSH_PORTS` (default: `2222`) behave like a real SSH server instead of a silent TCP listener:
+
+1. Sends a fake SSH banner on connect (`SSH-2.0-OpenSSH_8.9p1 Ubuntu-3`)
+2. Logs the client's SSH version string (first line they send back)
+3. Attempts to capture username/password from basic auth exchanges (many bots send plaintext credentials)
+4. Stores enriched data in honeypot stats: banner, client version, and credentials attempted
+
+SSH-specific data appears in all report formats (ASCII, Telegram, HTML) including top client versions and recent credential attempts.
+
 ### Enabling
 
 ```bash
 # In your systemd service environment
 HONEYPOT_ENABLED=true
-HONEYPOT_PORTS=2222,8080,3389,5900  # optional, these are the defaults
+HONEYPOT_PORTS=2222,8080,3389,5900   # optional, these are the defaults
+HONEYPOT_SSH_PORTS=2222              # optional, ports to emulate SSH (default: 2222)
 ```
 
 ### Daily Digest
@@ -280,7 +293,8 @@ src/
 ├── detectors/            # Detection rules (one per file)
 ├── alerters/             # Telegram alerts + daily summary
 ├── ai/                   # Claude AI analyzer, autonomous actions, threat memory
-├── honeypot/             # Optional decoy port listeners, stats, and reports
+├── honeypot/             # Optional decoy port listeners, stats, reports, and protocol emulators
+│   └── protocols/        # Protocol-specific handlers (SSH banner emulation, etc.)
 ├── api/                  # HTTP health/stats endpoints
 ├── bot/                  # Telegram bot command handler
 └── utils/                # Logger, sanitizer, file tailer, cooldown manager, origin identifier, geo-IP

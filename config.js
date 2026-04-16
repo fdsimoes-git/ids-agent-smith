@@ -64,6 +64,15 @@ const config = {
         .map(p => parseInt(p.trim(), 10))
         .filter(p => p > 0 && p < 65536)
     )];
+    const rawSshPorts = process.env.HONEYPOT_SSH_PORTS;
+    const sshPorts = rawSshPorts !== undefined
+      ? [...new Set(
+        rawSshPorts
+          .split(',')
+          .map(p => parseInt(p.trim(), 10))
+          .filter(p => p > 0 && p < 65536)
+      )]
+      : (ports.includes(2222) ? [2222] : []);
     if (enabled && ports.length === 0) {
       throw new Error('HONEYPOT_ENABLED=true but HONEYPOT_PORTS has no valid ports');
     }
@@ -86,9 +95,25 @@ const config = {
       ports.length = 0;
       ports.push(...filtered);
     }
+    const validSshPorts = sshPorts.filter(p => ports.includes(p));
+    const droppedSshPorts = sshPorts.filter(p => !ports.includes(p));
+    if (droppedSshPorts.length > 0) {
+      if (enabled && rawSshPorts !== undefined) {
+        throw new Error(
+          `HONEYPOT_ENABLED=true but HONEYPOT_SSH_PORTS contains ports not in HONEYPOT_PORTS ` +
+          `(${droppedSshPorts.join(', ')}). Add them to HONEYPOT_PORTS or remove them from HONEYPOT_SSH_PORTS.`
+        );
+      }
+      // eslint-disable-next-line no-console
+      console.warn(
+        `Warning: HONEYPOT_SSH_PORTS contains ports not in HONEYPOT_PORTS (${droppedSshPorts.join(', ')}); ` +
+        `using intersection: [${validSshPorts.join(', ')}]`
+      );
+    }
     return {
       enabled,
       ports,
+      sshPorts: validSshPorts,
       dataPath: process.env.HONEYPOT_DATA_PATH || '/var/log/idps-agent/honeypot.json',
       maxPayloadBytes: 1024,
       maxConnectionMs: 30_000,

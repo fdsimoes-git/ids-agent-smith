@@ -1,8 +1,15 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { createHash } from 'node:crypto';
 import config from '../../config.js';
 import logger from '../utils/logger.js';
 import { lookupIp } from '../utils/geoip.js';
+import { maskPassword } from './utils.js';
+
+function hashPassword(password) {
+  if (!password) return null;
+  return createHash('sha256').update(password).digest('hex').slice(0, 16);
+}
 
 class HoneypotStats {
   constructor() {
@@ -54,6 +61,17 @@ class HoneypotStats {
     };
     if (event.username) entry.username = event.username;
     if (event.passwordHash) entry.passwordHash = event.passwordHash;
+
+    // Enriched SSH fields (only present for SSH honeypot ports)
+    if (event.banner) entry.banner = event.banner;
+    if (event.clientVersion) entry.clientVersion = event.clientVersion;
+    if (event.credentials) {
+      entry.credentials = event.credentials.map(c => ({
+        username: c.username,
+        password: maskPassword(c.password),
+        passwordHash: hashPassword(c.password),
+      }));
+    }
 
     // Push immediately so max-records trimming stays accurate during bursts
     this.connections.push(entry);
@@ -149,6 +167,48 @@ class HoneypotStats {
       .reverse()
       .map(c => ({ ip: c.ip, port: c.port, timestamp: c.timestamp, payload: c.payload, geo: c.geo || null }));
 
+    // SSH-specific aggregations
+    const sshConnections = this.connections.filter(c => c.banner || c.clientVersion);
+    // Use a null-prototype object so attacker-controlled clientVersion strings
+    // like `__proto__` or `constructor` cannot trigger prototype pollution.
+    const clientVersions = Object.create(null);
+    for (const conn of sshConnections) {
+      if (conn.clientVersion) {
+        clientVersions[conn.clientVersion] = (clientVersions[conn.clientVersion] || 0) + 1;
+      }
+    }
+
+    // Count total credential attempts and collect the most recent 20
+    // by iterating newest-first, avoiding a large intermediate array.
+    let totalCredentialAttempts = 0;
+    const maxRecentCreds = 20;
+    const recentCredentials = [];
+    for (let i = sshConnections.length - 1; i >= 0; i--) {
+      const conn = sshConnections[i];
+      if (conn.credentials) {
+        totalCredentialAttempts += conn.credentials.length;
+        if (recentCredentials.length < maxRecentCreds) {
+          for (let j = conn.credentials.length - 1; j >= 0 && recentCredentials.length < maxRecentCreds; j--) {
+            const cred = conn.credentials[j];
+            recentCredentials.push({
+              ip: conn.ip,
+              timestamp: conn.timestamp,
+              username: cred.username,
+              password: maskPassword(cred.password),
+              passwordHash: cred.passwordHash || null,
+            });
+          }
+        }
+      }
+    }
+
+    const uniqueClientVersions = Object.keys(clientVersions).length;
+
+    const topClientVersions = Object.entries(clientVersions)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([version, count]) => ({ version, count }));
+
     return {
       totalConnections: this.connections.length,
       connectionsLast24h: recent.length,
@@ -160,6 +220,13 @@ class HoneypotStats {
       topCountries,
       hourlyLast24h: hourly,
       recentPayloads,
+      ssh: {
+        totalSshConnections: sshConnections.length,
+        uniqueClientVersions,
+        totalCredentialAttempts,
+        topClientVersions,
+        recentCredentials,
+      },
     };
   }
 

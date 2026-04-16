@@ -3,6 +3,7 @@ import config from '../../config.js';
 import logger from '../utils/logger.js';
 import { sanitizeIp } from '../utils/sanitize.js';
 import honeypotStats from './stats.js';
+import { handleSshConnection } from './protocols/ssh.js';
 
 const servers = [];
 
@@ -34,10 +35,18 @@ export async function startHoneypot(onThreat) {
 }
 
 function createDecoyServer(port, onThreat) {
+  const isSshPort = config.honeypot.sshPorts.includes(port);
+
   return new Promise((resolve, reject) => {
     let bound = false;
 
     const server = createServer(socket => {
+      // Delegate to SSH protocol handler for SSH ports
+      if (isSshPort) {
+        handleSshConnection(socket, port, onThreat);
+        return;
+      }
+
       const remoteIp = sanitizeIp(socket.remoteAddress?.replace('::ffff:', ''));
       if (!remoteIp) {
         socket.destroy();
