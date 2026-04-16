@@ -100,19 +100,25 @@ const config = {
       },
       dailyDigest: {
         enabled: process.env.HONEYPOT_DAILY_DIGEST === 'true',
-        hour: (() => {
-          // Support both HONEYPOT_DIGEST_TIME (HH:MM format) and HONEYPOT_DIGEST_HOUR (integer)
+        // Support both HONEYPOT_DIGEST_TIME (HH:MM format) and HONEYPOT_DIGEST_HOUR (integer)
+        // HONEYPOT_DIGEST_TIME takes precedence when both are set
+        ...(() => {
           const timeStr = process.env.HONEYPOT_DIGEST_TIME;
           if (timeStr) {
-            const parsed = parseInt(timeStr.split(':')[0], 10);
-            if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 23) return parsed;
+            const parts = timeStr.split(':');
+            const h = parseInt(parts[0], 10);
+            const m = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+            if (!Number.isNaN(h) && h >= 0 && h <= 23 &&
+                !Number.isNaN(m) && m >= 0 && m <= 59) {
+              return { hour: h, minute: m };
+            }
           }
           const hourStr = process.env.HONEYPOT_DIGEST_HOUR;
           if (hourStr !== undefined) {
             const parsed = parseInt(hourStr, 10);
-            if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 23) return parsed;
+            if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 23) return { hour: parsed, minute: 0 };
           }
-          return 8;
+          return { hour: 8, minute: 0 };
         })(),
       },
     };

@@ -4,6 +4,7 @@ import { sendMessage } from '../alerters/telegram.js';
 import honeypotStats from './stats.js';
 
 let timer = null;
+let lastSentDate = null;
 
 export function startDigest() {
   if (!config.honeypot.dailyDigest.enabled) return;
@@ -14,16 +15,21 @@ export function startDigest() {
     timer = null;
   }
 
+  const { hour, minute } = config.honeypot.dailyDigest;
+
   timer = setInterval(() => {
     const now = new Date();
-    if (now.getHours() === config.honeypot.dailyDigest.hour && now.getMinutes() === 0) {
+    const today = now.toISOString().slice(0, 10);
+    if (now.getHours() === hour && now.getMinutes() === minute && lastSentDate !== today) {
+      lastSentDate = today;
       generateAndSend().catch(err => {
         logger.error('Honeypot daily digest failed', { error: err.message });
+        lastSentDate = null; // allow retry on failure
       });
     }
   }, 60_000);
 
-  logger.info(`Honeypot daily digest scheduled at ${String(config.honeypot.dailyDigest.hour).padStart(2, '0')}:00`);
+  logger.info(`Honeypot daily digest scheduled at ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
 }
 
 export function stopDigest() {
