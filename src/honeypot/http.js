@@ -280,19 +280,22 @@ function parseBody(req) {
     let resolved = false;
     const maxBytes = config.honeypot.maxPayloadBytes;
 
-    function done(value) {
+    function done(body, aborted = false) {
       if (resolved) return;
       resolved = true;
       clearTimeout(timer);
-      resolve(value);
+      if (aborted) {
+        req.destroy();
+      }
+      resolve({ body, aborted });
     }
 
     const timer = setTimeout(() => {
-      done(Buffer.concat(chunks).toString('utf8'));
-      req.destroy();
+      done(Buffer.concat(chunks).toString('utf8'), true);
     }, 10_000);
 
     req.on('data', chunk => {
+      if (resolved) return;
       if (bytes < maxBytes) {
         const remaining = maxBytes - bytes;
         const slice = remaining < chunk.length ? chunk.subarray(0, remaining) : chunk;
@@ -301,8 +304,7 @@ function parseBody(req) {
       }
 
       if (bytes >= maxBytes) {
-        done(Buffer.concat(chunks).toString('utf8'));
-        req.destroy();
+        done(Buffer.concat(chunks).toString('utf8'), true);
       }
     });
 
@@ -310,7 +312,7 @@ function parseBody(req) {
       done(Buffer.concat(chunks).toString('utf8'));
     });
 
-    req.on('error', () => done(''));
+    req.on('error', () => done('', true));
   });
 }
 
@@ -399,7 +401,7 @@ export async function startHttpHoneypot(onThreat) {
 
       // Handle POST (credential capture)
       if (method === 'POST' && type) {
-        const body = await parseBody(req);
+        const { body, aborted } = await parseBody(req);
         const creds = extractCredentials(body, type);
 
         const passwordHash = creds.password
@@ -447,6 +449,13 @@ export async function startHttpHoneypot(onThreat) {
             suggestedAction: 'block',
             source: 'honeypot-http',
           });
+        }
+
+        // If the request was aborted (timeout/oversized body), the socket is
+        // destroyed — skip writing a response to avoid errors.
+        if (aborted) {
+          if (!res.destroyed) res.destroy();
+          return;
         }
 
         // Return "invalid credentials" response to keep bots engaged

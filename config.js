@@ -69,6 +69,19 @@ const config = {
     if (httpEnabled && (Number.isNaN(httpPort) || httpPort < 1 || httpPort > 65535 || !Number.isInteger(httpPort))) {
       throw new Error(`HONEYPOT_HTTP_ENABLED=true but HONEYPOT_HTTP_PORT=${rawHttpPort} is invalid (must be 1-65535)`);
     }
+    // When both honeypots are enabled, filter the HTTP port out of TCP ports
+    // to prevent bind conflicts (defaults both include 8080)
+    if (enabled && httpEnabled && ports.includes(httpPort)) {
+      const filtered = ports.filter(p => p !== httpPort);
+      if (filtered.length === 0) {
+        throw new Error(
+          `HONEYPOT_ENABLED=true and HONEYPOT_HTTP_ENABLED=true but all TCP ports overlap ` +
+          `with HONEYPOT_HTTP_PORT=${httpPort}. Add non-overlapping ports to HONEYPOT_PORTS`
+        );
+      }
+      ports.length = 0;
+      ports.push(...filtered);
+    }
     return {
       enabled,
       ports,
