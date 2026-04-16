@@ -81,6 +81,7 @@ sudo nano /etc/systemd/system/idps-agent.service
 | `HONEYPOT_HTTP_ENABLED` | No | `true` to enable HTTP honeypot with fake login pages (default: `false`) |
 | `HONEYPOT_HTTP_PORT` | No | HTTP honeypot listen port (default: `8080`) |
 | `GEOIP_ENABLED` | No | `false` to disable geo-IP lookups (default: `true`) |
+| `GEOIP_API_URL` | No | Base URL for ip-api.com (default: `http://ip-api.com`). The free tier only supports HTTP; set to `https://pro.ip-api.com` if you have a paid plan |
 
 ## Nginx Log Format
 
@@ -255,9 +256,12 @@ Attacker IPs are automatically enriched with geographic data (country, city, ISP
 
 - **Enabled by default** — set `GEOIP_ENABLED=false` to disable
 - Results are cached in memory (up to 1,000 IPs) to avoid duplicate lookups
+- Concurrent lookups for the same IP are coalesced into a single outbound request
 - Rate-limited to 45 requests/minute (ip-api.com free tier limit)
 - Private/reserved IPs (10.x, 192.168.x, 127.x, etc.) are skipped automatically
 - Geo data appears in honeypot reports: top attacker IPs show country codes, and a "Top Countries" breakdown is included in all report formats (Telegram, HTML, ASCII)
+
+> **Note:** The free ip-api.com tier only supports plain HTTP (no TLS). Attacker IPs are sent unencrypted by default. If you have a paid ip-api.com plan, set `GEOIP_API_URL=https://pro.ip-api.com` to enable HTTPS transport.
 
 ## Architecture
 

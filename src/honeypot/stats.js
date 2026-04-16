@@ -41,7 +41,7 @@ class HoneypotStats {
     }, 60_000);
   }
 
-  async record(event) {
+  record(event) {
     if (this.connections.length >= config.honeypot.maxRecords) {
       this.connections.splice(0, Math.ceil(config.honeypot.maxRecords * 0.1));
     }
@@ -55,18 +55,19 @@ class HoneypotStats {
     if (event.username) entry.username = event.username;
     if (event.passwordHash) entry.passwordHash = event.passwordHash;
 
-    // Enrich with geo-IP data (non-blocking — failures are silently ignored)
-    try {
-      const geo = await lookupIp(event.ip);
-      if (geo) {
-        entry.geo = geo;
-      }
-    } catch {
-      // geo enrichment is best-effort
-    }
-
+    // Push immediately so max-records trimming stays accurate during bursts
     this.connections.push(entry);
     this.dirty = true;
+
+    // Enrich with geo-IP data in the background (best-effort)
+    lookupIp(event.ip).then(geo => {
+      if (geo) {
+        entry.geo = geo;
+        this.dirty = true;
+      }
+    }).catch(() => {
+      // geo enrichment is best-effort
+    });
   }
 
   trimOld() {
