@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import config from '../../config.js';
 import logger from '../utils/logger.js';
+import { lookupIp } from '../utils/geoip.js';
 
 class HoneypotStats {
   constructor() {
@@ -53,8 +54,21 @@ class HoneypotStats {
     };
     if (event.username) entry.username = event.username;
     if (event.passwordHash) entry.passwordHash = event.passwordHash;
+
+    // Push immediately so max-records trimming stays accurate during bursts
     this.connections.push(entry);
     this.dirty = true;
+
+    // Enrich with geo-IP data in the background (best-effort)
+    if (!config.geoip?.enabled) return;
+    lookupIp(event.ip).then(geo => {
+      if (geo) {
+        entry.geo = geo;
+        this.dirty = true;
+      }
+    }).catch(() => {
+      // geo enrichment is best-effort
+    });
   }
 
   trimOld() {
@@ -75,13 +89,23 @@ class HoneypotStats {
     const last24h = now - 86400_000;
     const recent = this.connections.filter(c => new Date(c.timestamp).getTime() > last24h);
 
-    const byIp = {};
-    const byPort = {};
-    const byHour = {};
+    const byIp = Object.create(null);
+    const byPort = Object.create(null);
+    const byHour = Object.create(null);
+    const byCountry = Object.create(null);
+    const ipGeo = Object.create(null);
 
     for (const conn of this.connections) {
       byIp[conn.ip] = (byIp[conn.ip] || 0) + 1;
       byPort[conn.port] = (byPort[conn.port] || 0) + 1;
+
+      if (conn.geo?.countryCode && /^[A-Z]{2}$/.test(conn.geo.countryCode)) {
+        const key = conn.geo.countryCode;
+        byCountry[key] = (byCountry[key] || { country: conn.geo.country, countryCode: key, count: 0 });
+        byCountry[key].count++;
+        // Keep latest geo per IP for topIps enrichment
+        ipGeo[conn.ip] = conn.geo;
+      }
     }
 
     for (const conn of recent) {
@@ -93,7 +117,13 @@ class HoneypotStats {
     const topIps = Object.entries(byIp)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
-      .map(([ip, count]) => ({ ip, count }));
+      .map(([ip, count]) => {
+        const entry = { ip, count };
+        if (ipGeo[ip]) {
+          entry.geo = ipGeo[ip];
+        }
+        return entry;
+      });
 
     const topPorts = Object.entries(byPort)
       .sort((a, b) => b[1] - a[1])
@@ -103,11 +133,15 @@ class HoneypotStats {
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([hour, count]) => ({ hour, count }));
 
+    const topCountries = Object.values(byCountry)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
     const recentPayloads = this.connections
       .filter(c => c.payload)
       .slice(-10)
       .reverse()
-      .map(c => ({ ip: c.ip, port: c.port, timestamp: c.timestamp, payload: c.payload }));
+      .map(c => ({ ip: c.ip, port: c.port, timestamp: c.timestamp, payload: c.payload, geo: c.geo || null }));
 
     return {
       totalConnections: this.connections.length,
@@ -115,6 +149,7 @@ class HoneypotStats {
       uniqueIps: Object.keys(byIp).length,
       topIps,
       topPorts,
+      topCountries,
       hourlyLast24h: hourly,
       recentPayloads,
     };
