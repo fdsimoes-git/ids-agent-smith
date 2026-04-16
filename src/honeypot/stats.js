@@ -289,8 +289,19 @@ class HoneypotStats {
     // When NDJSON export is enabled, read the file once so both archives
     // derive from identical content. Otherwise stream straight from disk so
     // RSS stays flat even on large files (rotation is triggered by size).
+    // Above archiveNdjsonMaxMb the buffer + JSON.parse cost would defeat the
+    // whole memory-bounded goal of this feature, so skip NDJSON in that case.
     let fileContent = null;
-    if (config.honeypot.archiveNdjson) {
+    const ndjsonLimitBytes = config.honeypot.archiveNdjsonMaxMb * 1024 * 1024;
+    const ndjsonOversized = config.honeypot.archiveNdjson && size > ndjsonLimitBytes;
+    if (ndjsonOversized) {
+      logger.warn('Skipping NDJSON export: source file exceeds archiveNdjsonMaxMb', {
+        path: dataPath,
+        sizeBytes: size,
+        limitBytes: ndjsonLimitBytes,
+      });
+    }
+    if (config.honeypot.archiveNdjson && !ndjsonOversized) {
       try {
         fileContent = await readFile(dataPath);
       } catch (err) {

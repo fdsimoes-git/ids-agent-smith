@@ -89,6 +89,7 @@ sudo nano /etc/systemd/system/idps-agent.service
 | `HONEYPOT_MAX_FILE_MB` | No | Max size of `honeypot.json` before it is gzip-archived and rotated (default: `50`). Keeps the 3 most recent archives |
 | `HONEYPOT_ARCHIVE_ENABLED` | No | `false` to disable the gzip archive/rotate step (default: `true`). When disabled, `honeypot.json` is not rotated even if it exceeds `HONEYPOT_MAX_FILE_MB` |
 | `HONEYPOT_ARCHIVE_NDJSON` | No | `true` to also write a compressed NDJSON export (`honeypot.json.<ts>.ndjson.gz`) alongside the `.gz` snapshot (default: `false`) |
+| `HONEYPOT_ARCHIVE_NDJSON_MAX_MB` | No | Max `honeypot.json` size (MB) for which NDJSON export runs; above this the export is skipped with a warning because buffering + `JSON.parse` would spike RSS (default: `10`) |
 | `MEMORY_ALERT_MB` | No | RSS threshold (MB) above which a Telegram alert is sent (throttled to once/hour, default: `256`) |
 
 ## Journal Disk Limits
