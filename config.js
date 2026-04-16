@@ -52,6 +52,10 @@ const config = {
   threatHistoryPath: process.env.THREAT_HISTORY_PATH || '/var/lib/idps-agent/threat-history.json',
   aiDecisionLogPath: process.env.AI_DECISION_LOG_PATH || '/var/log/idps-agent/ai-decisions.log',
 
+  geoip: {
+    enabled: process.env.GEOIP_ENABLED !== 'false', // enabled by default
+  },
+
   honeypot: (() => {
     const enabled = process.env.HONEYPOT_ENABLED === 'true';
     const ports = [...new Set(

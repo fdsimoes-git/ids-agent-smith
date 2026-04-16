@@ -14,10 +14,23 @@ export function generateAsciiReport() {
   if (summary.topIps.length > 0) {
     lines.push('TOP ATTACKER IPs:');
     const maxCount = summary.topIps[0]?.count || 1;
-    for (const { ip, count } of summary.topIps) {
+    for (const { ip, count, geo } of summary.topIps) {
       const barLen = Math.max(1, Math.round((count / maxCount) * 20));
       const bar = '#'.repeat(barLen);
-      lines.push(`  ${ip.padEnd(18)} ${bar} ${count}`);
+      const country = geo?.countryCode ? ` [${geo.countryCode}]` : '';
+      lines.push(`  ${ip.padEnd(18)} ${bar} ${count}${country}`);
+    }
+    lines.push('');
+  }
+
+  // Top countries
+  if (summary.topCountries?.length > 0) {
+    lines.push('TOP COUNTRIES:');
+    const maxCount = summary.topCountries[0]?.count || 1;
+    for (const { country, countryCode, count } of summary.topCountries) {
+      const barLen = Math.max(1, Math.round((count / maxCount) * 20));
+      const bar = '#'.repeat(barLen);
+      lines.push(`  ${countryCode} ${(country || '').padEnd(20)} ${bar} ${count}`);
     }
     lines.push('');
   }
@@ -70,8 +83,17 @@ export function generateTelegramReport() {
   if (summary.topIps.length > 0) {
     lines.push('');
     lines.push('<b>Top Attacker IPs:</b>');
-    for (const { ip, count } of summary.topIps.slice(0, 5)) {
-      lines.push(`  <code>${escapeHtml(ip)}</code> — ${count} hits`);
+    for (const { ip, count, geo } of summary.topIps.slice(0, 5)) {
+      const flag = geo?.countryCode ? ` ${countryFlag(geo.countryCode)} ${geo.countryCode}` : '';
+      lines.push(`  <code>${escapeHtml(ip)}</code>${flag} — ${count} hits`);
+    }
+  }
+
+  if (summary.topCountries?.length > 0) {
+    lines.push('');
+    lines.push('<b>Top Countries:</b>');
+    for (const { country, countryCode, count } of summary.topCountries.slice(0, 5)) {
+      lines.push(`  ${countryFlag(countryCode)} ${escapeHtml(country || countryCode)} — ${count} hits`);
     }
   }
 
@@ -90,7 +112,14 @@ export function generateHtmlReport() {
   const summary = honeypotStats.getSummary();
 
   const topIpRows = summary.topIps
-    .map(({ ip, count }) => `<tr><td><code>${esc(ip)}</code></td><td>${count}</td><td><div class="bar" style="width:${pct(count, summary.topIps[0]?.count)}%"></div></td></tr>`)
+    .map(({ ip, count, geo }) => {
+      const country = geo?.countryCode ? ` <small>(${esc(geo.countryCode)})</small>` : '';
+      return `<tr><td><code>${esc(ip)}</code>${country}</td><td>${count}</td><td><div class="bar" style="width:${pct(count, summary.topIps[0]?.count)}%"></div></td></tr>`;
+    })
+    .join('\n');
+
+  const topCountryRows = (summary.topCountries || [])
+    .map(({ country, countryCode, count }) => `<tr><td>${esc(countryCode)} ${esc(country)}</td><td>${count}</td><td><div class="bar bar-country" style="width:${pct(count, summary.topCountries[0]?.count)}%"></div></td></tr>`)
     .join('\n');
 
   const topPortRows = summary.topPorts
@@ -131,6 +160,7 @@ export function generateHtmlReport() {
   pre { background: #1c2128; padding: .3rem .5rem; border-radius: 4px; font-size: .8rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 0; }
   .bar { height: 18px; background: linear-gradient(90deg, #f85149, #da3633); border-radius: 3px; min-width: 4px; }
   .bar-port { background: linear-gradient(90deg, #f0883e, #d29922); }
+  .bar-country { background: linear-gradient(90deg, #3fb950, #238636); }
   .hbar-wrap { display: flex; gap: 6px; align-items: flex-end; margin: 1rem 0; padding: .5rem; background: #161b22; border-radius: 8px; overflow-x: auto; }
   .hbar-col { display: flex; flex-direction: column; align-items: center; min-width: 32px; }
   .hbar { width: 24px; background: linear-gradient(0deg, #238636, #2ea043); border-radius: 3px 3px 0 0; }
@@ -154,6 +184,12 @@ export function generateHtmlReport() {
 <table>
   <tr><th>IP</th><th>Hits</th><th>Distribution</th></tr>
   ${topIpRows || '<tr><td colspan="3">No data yet</td></tr>'}
+</table>
+
+<h2>Top Countries</h2>
+<table>
+  <tr><th>Country</th><th>Hits</th><th>Distribution</th></tr>
+  ${topCountryRows || '<tr><td colspan="3">No geo data yet</td></tr>'}
 </table>
 
 <h2>Most Probed Ports</h2>
@@ -183,6 +219,13 @@ function esc(str) {
 
 function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function countryFlag(code) {
+  if (!code || code.length !== 2) return '';
+  return String.fromCodePoint(
+    ...code.toUpperCase().split('').map(c => 0x1F1E6 + c.charCodeAt(0) - 65)
+  );
 }
 
 function pct(value, max) {

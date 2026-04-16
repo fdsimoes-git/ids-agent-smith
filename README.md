@@ -25,6 +25,7 @@ IDPS Agent monitors your server's log files in real-time, detects threats using 
 - **Daily summaries** at 08:00 AM, **weekly AI reports** on Mondays
 - **HTTP API**: `/health` and `/stats` endpoints
 - **Honeypot** (optional): decoy port listeners to catch attackers probing your server, with stats and data visualization
+- **Geo-IP enrichment**: automatic country/city/ISP lookup for attacker IPs via ip-api.com (free, no API key)
 - **Lightweight**: single process, in-memory store, minimal dependencies
 
 ## Requirements
@@ -79,6 +80,7 @@ sudo nano /etc/systemd/system/idps-agent.service
 | `HONEYPOT_DATA_PATH` | No | Path for honeypot data file (default: `/var/log/idps-agent/honeypot.json`) |
 | `HONEYPOT_HTTP_ENABLED` | No | `true` to enable HTTP honeypot with fake login pages (default: `false`) |
 | `HONEYPOT_HTTP_PORT` | No | HTTP honeypot listen port (default: `8080`) |
+| `GEOIP_ENABLED` | No | `false` to disable geo-IP lookups (default: `true`) |
 
 ## Nginx Log Format
 
@@ -247,6 +249,16 @@ HONEYPOT_HTTP_PORT=8080  # optional, 8080 is the default
 
 **Note:** If you use the TCP honeypot on port 8080 (`HONEYPOT_PORTS`), remove 8080 from that list when enabling the HTTP honeypot to avoid port conflicts.
 
+## Geo-IP Enrichment
+
+Attacker IPs are automatically enriched with geographic data (country, city, ISP, hosting/proxy flags) using the free [ip-api.com](http://ip-api.com) service. No API key is required.
+
+- **Enabled by default** — set `GEOIP_ENABLED=false` to disable
+- Results are cached in memory (up to 1,000 IPs) to avoid duplicate lookups
+- Rate-limited to 45 requests/minute (ip-api.com free tier limit)
+- Private/reserved IPs (10.x, 192.168.x, 127.x, etc.) are skipped automatically
+- Geo data appears in honeypot reports: top attacker IPs show country codes, and a "Top Countries" breakdown is included in all report formats (Telegram, HTML, ASCII)
+
 ## Architecture
 
 ```
@@ -260,7 +272,7 @@ src/
 ├── honeypot/             # Optional decoy port listeners, stats, and reports
 ├── api/                  # HTTP health/stats endpoints
 ├── bot/                  # Telegram bot command handler
-└── utils/                # Logger, sanitizer, file tailer, cooldown manager, origin identifier
+└── utils/                # Logger, sanitizer, file tailer, cooldown manager, origin identifier, geo-IP
 ```
 
 ## Deployment Recommendations
