@@ -75,10 +75,17 @@ class Store {
   }
 
   getStats() {
+    const mem = process.memoryUsage();
+    const toMb = bytes => Math.round(bytes / 1024 / 1024 * 10) / 10;
     return {
       ...this.stats,
       uptime: Math.floor(process.uptime()),
-      memoryUsage: process.memoryUsage().heapUsed,
+      memoryUsage: mem.heapUsed,
+      memory: {
+        heapUsedMb: toMb(mem.heapUsed),
+        heapTotalMb: toMb(mem.heapTotal),
+        rssMb: toMb(mem.rss),
+      },
       trackedKeys: this.events.size,
       bannedIps: this.bannedIps.size,
       whitelistedIps: this.whitelistedIps.size,

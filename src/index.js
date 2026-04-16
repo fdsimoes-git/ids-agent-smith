@@ -24,6 +24,28 @@ const cooldown = new CooldownManager(config.alertCooldownMs);
 const tailers = [];
 let weeklyTimer = null;
 let cleanupTimer = null;
+let memoryTimer = null;
+let lastMemoryAlertMs = 0;
+const MEMORY_ALERT_THROTTLE_MS = 60 * 60 * 1000;
+
+function checkMemoryUsage() {
+  const rssBytes = process.memoryUsage().rss;
+  const rssMb = rssBytes / 1024 / 1024;
+  if (rssMb <= config.memoryAlertMb) return;
+
+  const now = Date.now();
+  if (now - lastMemoryAlertMs < MEMORY_ALERT_THROTTLE_MS) return;
+  lastMemoryAlertMs = now;
+
+  const rssDisplay = Math.round(rssMb * 10) / 10;
+  logger.warn('Memory usage above alert threshold', { rssMb: rssDisplay, thresholdMb: config.memoryAlertMb });
+  sendMessage(
+    `\u26A0\uFE0F <b>IDPS Agent memory alert</b>\n` +
+    `RSS: <b>${rssDisplay} MB</b> (threshold: ${config.memoryAlertMb} MB)`
+  ).catch(err => {
+    logger.error('Failed to send memory alert', { error: err.message });
+  });
+}
 
 // --- Threat handling pipeline ---
 
@@ -111,6 +133,7 @@ async function shutdown(signal) {
 
   if (cleanupTimer) clearInterval(cleanupTimer);
   if (weeklyTimer) clearInterval(weeklyTimer);
+  if (memoryTimer) clearInterval(memoryTimer);
   stopDailySummary();
   stopBot();
 
@@ -222,6 +245,9 @@ async function main() {
     store.cleanup();
     cooldown.cleanup();
   }, config.storeTtlMs);
+
+  // Memory monitoring — checks RSS against MEMORY_ALERT_MB threshold
+  memoryTimer = setInterval(checkMemoryUsage, 60_000);
 
   // Startup notification
   const startupLines = [

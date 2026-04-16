@@ -226,6 +226,7 @@ async function handleMessage(msg, store, memory) {
 
       case '/status': {
         const stats = store.getStats();
+        const mem = stats.memory || {};
         const lines = [
           `\u{1F4CA} <b>IDPS Agent Status</b>`,
           ``,
@@ -234,7 +235,7 @@ async function handleMessage(msg, store, memory) {
           `<b>Tracked keys:</b> ${stats.trackedKeys}`,
           `<b>Banned IPs:</b> ${stats.bannedIps}`,
           `<b>Whitelisted IPs:</b> ${stats.whitelistedIps}`,
-          `<b>Memory:</b> ${(stats.memoryUsage / 1024 / 1024).toFixed(1)} MB`,
+          `<b>Memory:</b> heap ${mem.heapUsedMb ?? '?'}/${mem.heapTotalMb ?? '?'} MB, RSS ${mem.rssMb ?? '?'} MB`,
           `<b>Autonomous mode:</b> ${config.autonomousMode ? 'ON' : 'OFF'}`,
         ];
 

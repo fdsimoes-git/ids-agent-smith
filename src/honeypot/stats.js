@@ -1,5 +1,8 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile, writeFile, mkdir, stat, readdir, unlink } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { createGzip } from 'node:zlib';
+import { pipeline } from 'node:stream/promises';
+import { basename, dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import config from '../../config.js';
 import logger from '../utils/logger.js';
@@ -237,6 +240,7 @@ class HoneypotStats {
       try {
         const dir = dirname(config.honeypot.dataPath);
         await mkdir(dir, { recursive: true }).catch(() => {});
+        await this.rotateIfNeeded();
         await writeFile(
           config.honeypot.dataPath,
           JSON.stringify({ connections: this.connections }, null, 2),
@@ -251,6 +255,77 @@ class HoneypotStats {
       }
     })();
     return this.savePromise;
+  }
+
+  async rotateIfNeeded() {
+    const dataPath = config.honeypot.dataPath;
+    const limitBytes = config.honeypot.maxFileMb * 1024 * 1024;
+    let size;
+    try {
+      const info = await stat(dataPath);
+      size = info.size;
+    } catch (err) {
+      if (err.code === 'ENOENT') return;
+      throw err;
+    }
+    if (size < limitBytes) return;
+
+    const dir = dirname(dataPath);
+    const base = basename(dataPath);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archivePath = join(dir, `${base}.${timestamp}.gz`);
+
+    try {
+      await pipeline(
+        createReadStream(dataPath),
+        createGzip(),
+        createWriteStream(archivePath)
+      );
+      await unlink(dataPath);
+      this.connections = [];
+      logger.info(`Honeypot stats rotated: archived ${size} bytes to ${archivePath}`);
+    } catch (err) {
+      logger.error('Failed to rotate honeypot stats', { error: err.message });
+      return;
+    }
+
+    await this.pruneArchives();
+  }
+
+  async pruneArchives() {
+    const dir = dirname(config.honeypot.dataPath);
+    const base = basename(config.honeypot.dataPath);
+    const prefix = `${base}.`;
+    const suffix = '.gz';
+    try {
+      const entries = await readdir(dir);
+      const archives = entries
+        .filter(name => name.startsWith(prefix) && name.endsWith(suffix))
+        .map(name => join(dir, name));
+      if (archives.length <= config.honeypot.maxArchives) return;
+
+      const withMtime = await Promise.all(
+        archives.map(async path => {
+          try {
+            const info = await stat(path);
+            return { path, mtime: info.mtimeMs };
+          } catch {
+            return null;
+          }
+        })
+      );
+      const sorted = withMtime
+        .filter(Boolean)
+        .sort((a, b) => b.mtime - a.mtime);
+      const toDelete = sorted.slice(config.honeypot.maxArchives);
+      for (const entry of toDelete) {
+        await unlink(entry.path).catch(err => {
+          logger.warn('Failed to delete old honeypot archive', { path: entry.path, error: err.message });
+        });
+      }
+    } catch (err) {
+      logger.warn('Failed to prune honeypot archives', { error: err.message });
+    }
   }
 
   async stop() {

@@ -42,6 +42,9 @@ ReadOnlyPaths=/var/log/auth.log
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=idps-agent
+# Cap journal disk usage to keep GCP e2-micro costs predictable
+SystemMaxUse=100M
+SystemKeepFree=50M
 
 [Install]
 WantedBy=multi-user.target

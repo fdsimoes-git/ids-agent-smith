@@ -86,6 +86,8 @@ sudo nano /etc/systemd/system/idps-agent.service
 | `HONEYPOT_DAILY_DIGEST` | No | `true` to enable daily honeypot activity digest via Telegram (default: `false`) |
 | `HONEYPOT_DIGEST_TIME` | No | Time to send the daily digest in `HH:MM` format, e.g. `09:30` (default: `08:00`). Takes precedence over `HONEYPOT_DIGEST_HOUR` when both are set |
 | `HONEYPOT_DIGEST_HOUR` | No | Hour (0-23) to send the daily digest (default: `8`). Ignored if `HONEYPOT_DIGEST_TIME` is set |
+| `HONEYPOT_MAX_FILE_MB` | No | Max size of `honeypot.json` before it is gzip-archived and rotated (default: `50`). Keeps the 3 most recent archives |
+| `MEMORY_ALERT_MB` | No | RSS threshold (MB) above which a Telegram alert is sent (throttled to once/hour, default: `256`) |
 
 ## Nginx Log Format
 
