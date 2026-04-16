@@ -1,5 +1,5 @@
 import { readFile, writeFile, mkdir, stat, readdir, unlink } from 'node:fs/promises';
-import { createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
 import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { basename, dirname, join } from 'node:path';
@@ -281,29 +281,40 @@ class HoneypotStats {
     // and doesn't trigger a retry on every subsequent save().
     this.lastRotateMs = Date.now();
 
-    // Read the on-disk file once so the snapshot archive and the NDJSON
-    // export derive from identical content.
-    let fileContent;
-    try {
-      fileContent = await readFile(dataPath);
-    } catch (err) {
-      logger.error('Honeypot stats rotation failed: could not read source file', {
-        path: dataPath,
-        error: err.message,
-      });
-      return;
-    }
-
     const dir = dirname(dataPath);
     const base = basename(dataPath);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const archivePath = join(dir, `${base}.${timestamp}.gz`);
 
+    // When NDJSON export is enabled, read the file once so both archives
+    // derive from identical content. Otherwise stream straight from disk so
+    // RSS stays flat even on large files (rotation is triggered by size).
+    let fileContent = null;
+    if (config.honeypot.archiveNdjson) {
+      try {
+        fileContent = await readFile(dataPath);
+      } catch (err) {
+        logger.error('Honeypot stats rotation failed: could not read source file', {
+          path: dataPath,
+          error: err.message,
+        });
+        return;
+      }
+    }
+
     try {
-      const gzip = createGzip();
-      const done = pipeline(gzip, createWriteStream(archivePath));
-      gzip.end(fileContent);
-      await done;
+      if (fileContent !== null) {
+        const gzip = createGzip();
+        const done = pipeline(gzip, createWriteStream(archivePath));
+        gzip.end(fileContent);
+        await done;
+      } else {
+        await pipeline(
+          createReadStream(dataPath),
+          createGzip(),
+          createWriteStream(archivePath)
+        );
+      }
       logger.info(`Honeypot stats archived: ${size} bytes to ${archivePath}`);
     } catch (err) {
       logger.error('Honeypot stats rotation failed: snapshot archive write error', {
@@ -313,7 +324,7 @@ class HoneypotStats {
       return;
     }
 
-    if (config.honeypot.archiveNdjson) {
+    if (fileContent !== null) {
       const ndjsonPath = join(dir, `${base}.${timestamp}.ndjson.gz`);
       try {
         await this.writeNdjsonArchive(ndjsonPath, fileContent);
