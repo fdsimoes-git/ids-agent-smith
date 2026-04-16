@@ -1,5 +1,5 @@
 import { readFile, writeFile, mkdir, stat, readdir, unlink } from 'node:fs/promises';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createWriteStream } from 'node:fs';
 import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { basename, dirname, join } from 'node:path';
@@ -276,45 +276,71 @@ class HoneypotStats {
     }
     if (size < limitBytes) return;
 
+    // Advance lastRotateMs before attempting archive writes so a failure
+    // (permissions, disk full, etc.) is still throttled to ROTATE_COOLDOWN_MS
+    // and doesn't trigger a retry on every subsequent save().
+    this.lastRotateMs = Date.now();
+
+    // Read the on-disk file once so the snapshot archive and the NDJSON
+    // export derive from identical content.
+    let fileContent;
+    try {
+      fileContent = await readFile(dataPath);
+    } catch (err) {
+      logger.error('Honeypot stats rotation failed: could not read source file', {
+        path: dataPath,
+        error: err.message,
+      });
+      return;
+    }
+
     const dir = dirname(dataPath);
     const base = basename(dataPath);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const archivePath = join(dir, `${base}.${timestamp}.gz`);
 
     try {
-      await pipeline(
-        createReadStream(dataPath),
-        createGzip(),
-        createWriteStream(archivePath)
-      );
+      const gzip = createGzip();
+      const done = pipeline(gzip, createWriteStream(archivePath));
+      gzip.end(fileContent);
+      await done;
       logger.info(`Honeypot stats archived: ${size} bytes to ${archivePath}`);
     } catch (err) {
-      logger.error('Failed to archive honeypot stats', { error: err.message });
+      logger.error('Honeypot stats rotation failed: snapshot archive write error', {
+        path: archivePath,
+        error: err.message,
+      });
       return;
     }
 
     if (config.honeypot.archiveNdjson) {
       const ndjsonPath = join(dir, `${base}.${timestamp}.ndjson.gz`);
       try {
-        await this.writeNdjsonArchive(ndjsonPath);
+        await this.writeNdjsonArchive(ndjsonPath, fileContent);
         logger.info(`Honeypot stats NDJSON export: ${ndjsonPath}`);
       } catch (err) {
-        logger.error('Failed to write NDJSON archive', { error: err.message });
+        logger.error('Failed to write NDJSON archive', {
+          path: ndjsonPath,
+          error: err.message,
+        });
       }
     }
 
     // Keep in-memory connections intact. The next save() rewrites the file
     // with the bounded current state (maxRecords + retentionDays), which
     // prunes oldest records from disk without wiping runtime stats.
-    this.lastRotateMs = Date.now();
     await this.pruneArchives();
   }
 
-  async writeNdjsonArchive(ndjsonPath) {
+  async writeNdjsonArchive(ndjsonPath, fileContent) {
+    // Parse the same buffer used for the .gz snapshot so both archives
+    // correspond to identical data, not live in-memory state that may have
+    // mutated during the pipeline.
+    const parsed = JSON.parse(fileContent.toString('utf8'));
+    const connections = Array.isArray(parsed.connections) ? parsed.connections : [];
     const gzip = createGzip();
-    const out = createWriteStream(ndjsonPath);
-    const done = pipeline(gzip, out);
-    for (const conn of this.connections) {
+    const done = pipeline(gzip, createWriteStream(ndjsonPath));
+    for (const conn of connections) {
       if (!gzip.write(JSON.stringify(conn) + '\n')) {
         await new Promise(resolve => gzip.once('drain', resolve));
       }
@@ -328,31 +354,56 @@ class HoneypotStats {
     const base = basename(config.honeypot.dataPath);
     const prefix = `${base}.`;
     const suffix = '.gz';
+    const ndjsonSuffix = '.ndjson';
     try {
       const entries = await readdir(dir);
-      const archives = entries
-        .filter(name => name.startsWith(prefix) && name.endsWith(suffix))
-        .map(name => join(dir, name));
-      if (archives.length <= config.honeypot.maxArchives) return;
+      // Group by rotation timestamp so the snapshot (`{base}.{ts}.gz`) and
+      // its NDJSON export (`{base}.{ts}.ndjson.gz`) are pruned together and
+      // count as one archive toward maxArchives.
+      const groups = new Map();
+      for (const name of entries) {
+        if (!name.startsWith(prefix) || !name.endsWith(suffix)) continue;
+        const stem = name.slice(prefix.length, -suffix.length);
+        const key = stem.endsWith(ndjsonSuffix)
+          ? stem.slice(0, -ndjsonSuffix.length)
+          : stem;
+        const paths = groups.get(key) || [];
+        paths.push(join(dir, name));
+        groups.set(key, paths);
+      }
+      if (groups.size <= config.honeypot.maxArchives) return;
 
-      const withMtime = await Promise.all(
-        archives.map(async path => {
-          try {
-            const info = await stat(path);
-            return { path, mtime: info.mtimeMs };
-          } catch {
-            return null;
-          }
+      const groupInfo = await Promise.all(
+        Array.from(groups.values()).map(async paths => {
+          const files = (
+            await Promise.all(
+              paths.map(async path => {
+                try {
+                  const info = await stat(path);
+                  return { path, mtime: info.mtimeMs };
+                } catch {
+                  return null;
+                }
+              })
+            )
+          ).filter(Boolean);
+          if (!files.length) return null;
+          return {
+            paths: files.map(f => f.path),
+            mtime: Math.max(...files.map(f => f.mtime)),
+          };
         })
       );
-      const sorted = withMtime
+      const sorted = groupInfo
         .filter(Boolean)
         .sort((a, b) => b.mtime - a.mtime);
       const toDelete = sorted.slice(config.honeypot.maxArchives);
-      for (const entry of toDelete) {
-        await unlink(entry.path).catch(err => {
-          logger.warn('Failed to delete old honeypot archive', { path: entry.path, error: err.message });
-        });
+      for (const group of toDelete) {
+        for (const path of group.paths) {
+          await unlink(path).catch(err => {
+            logger.warn('Failed to delete old honeypot archive', { path, error: err.message });
+          });
+        }
       }
     } catch (err) {
       logger.warn('Failed to prune honeypot archives', { error: err.message });
