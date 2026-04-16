@@ -144,12 +144,12 @@ export function generateAsciiReport() {
   lines.push('=== HONEYPOT REPORT ===');
   lines.push(`Total connections: ${summary.totalConnections}`);
   lines.push(`Last 24h: ${summary.connectionsLast24h}`);
-  lines.push(`Unique IPs: ${summary.uniqueIps}`);
+  lines.push(`Unique IPs (24h): ${summary.uniqueIps}`);
   lines.push('');
 
   // Top attacker IPs
   if (summary.topIps.length > 0) {
-    lines.push('TOP ATTACKER IPs:');
+    lines.push('TOP ATTACKER IPs (24h):');
     const maxCount = summary.topIps[0]?.count || 1;
     for (const { ip, count, geo } of summary.topIps) {
       const barLen = Math.max(1, Math.round((count / maxCount) * 20));
@@ -175,7 +175,7 @@ export function generateAsciiReport() {
 
   // Most probed ports
   if (summary.topPorts.length > 0) {
-    lines.push('MOST PROBED PORTS:');
+    lines.push('MOST PROBED PORTS (24h):');
     const maxCount = summary.topPorts[0]?.count || 1;
     for (const { port, count } of summary.topPorts) {
       const barLen = Math.max(1, Math.round((count / maxCount) * 20));
@@ -216,11 +216,11 @@ export function generateTelegramReport() {
 
   lines.push(`<b>Total connections:</b> ${summary.totalConnections}`);
   lines.push(`<b>Last 24h:</b> ${summary.connectionsLast24h}`);
-  lines.push(`<b>Unique IPs:</b> ${summary.uniqueIps}`);
+  lines.push(`<b>Unique IPs (24h):</b> ${summary.uniqueIps}`);
 
   if (summary.topIps.length > 0) {
     lines.push('');
-    lines.push('<b>Top Attacker IPs:</b>');
+    lines.push('<b>Top Attacker IPs (24h):</b>');
     for (const { ip, count, geo } of summary.topIps.slice(0, 5)) {
       const cc = geo?.countryCode;
       const flag = (cc && /^[A-Z]{2}$/.test(cc)) ? ` ${countryFlag(cc)} ${escapeHtml(cc)}` : '';
@@ -230,7 +230,7 @@ export function generateTelegramReport() {
 
   if (summary.topCountries?.length > 0) {
     lines.push('');
-    lines.push('<b>Top Countries:</b>');
+    lines.push('<b>Top Countries (24h):</b>');
     for (const { country, countryCode, count } of summary.topCountries.slice(0, 5)) {
       const safeCode = /^[A-Z]{2}$/.test(countryCode) ? countryCode : '';
       lines.push(`  ${countryFlag(safeCode)} ${escapeHtml(country || safeCode)} — ${count} hits`);
@@ -239,7 +239,7 @@ export function generateTelegramReport() {
 
   if (summary.topPorts.length > 0) {
     lines.push('');
-    lines.push('<b>Most Probed Ports:</b>');
+    lines.push('<b>Most Probed Ports (24h):</b>');
     for (const { port, count } of summary.topPorts.slice(0, 5)) {
       lines.push(`  :${port} — ${count} hits`);
     }
@@ -336,31 +336,31 @@ export function generateHtmlReport() {
 <div class="summary">
   <div class="card"><div class="num">${summary.totalConnections}</div><div class="label">Total Connections</div></div>
   <div class="card"><div class="num">${summary.connectionsLast24h}</div><div class="label">Last 24h</div></div>
-  <div class="card"><div class="num">${summary.uniqueIps}</div><div class="label">Unique IPs</div></div>
-  <div class="card"><div class="num">${summary.topPorts.length}</div><div class="label">Ports Probed</div></div>
-  <div class="card"><div class="num">${summary.uniqueCountries ?? 0}</div><div class="label">Countries</div></div>
+  <div class="card"><div class="num">${summary.uniqueIps}</div><div class="label">Unique IPs (24h)</div></div>
+  <div class="card"><div class="num">${summary.topPorts.length}</div><div class="label">Ports Probed (24h)</div></div>
+  <div class="card"><div class="num">${summary.uniqueCountries ?? 0}</div><div class="label">Countries (24h)</div></div>
 </div>
 
-<h2>Global Attack Origins</h2>
+<h2>Global Attack Origins (24h)</h2>
 ${geoNote}
 <div class="world-map">
 ${worldMapSvg}
 </div>
 ${hasTopCountryData ? `
-<h2>Top Attacker Countries</h2>
+<h2>Top Attacker Countries (24h)</h2>
 <table>
   <tr><th>Code</th><th>Country</th><th>Hits</th><th>Distribution</th></tr>
   ${topCountryRows}
 </table>
 ` : ''}
 
-<h2>Top Attacker IPs</h2>
+<h2>Top Attacker IPs (24h)</h2>
 <table>
   <tr><th>IP</th><th>Hits</th><th>Distribution</th></tr>
   ${topIpRows || '<tr><td colspan="3">No data yet</td></tr>'}
 </table>
 
-<h2>Most Probed Ports</h2>
+<h2>Most Probed Ports (24h)</h2>
 <table>
   <tr><th>Port</th><th>Hits</th><th>Distribution</th></tr>
   ${topPortRows || '<tr><td colspan="3">No data yet</td></tr>'}

@@ -82,14 +82,14 @@ async function generateAndSend() {
     `\u{1F36F} <b>Honeypot Daily Digest</b>`,
     ``,
     `<b>Total hits (24h):</b> ${summary.connectionsLast24h}`,
-    `<b>Unique attacker IPs:</b> ${summary.uniqueIps}`,
+    `<b>Unique attacker IPs (24h):</b> ${summary.uniqueIps}`,
   ];
 
   // TODO: Top countries section will be added after geo-IP data is available (see #18)
 
   // Most targeted ports
   if (summary.topPorts.length > 0) {
-    lines.push(``, `<b>Most targeted ports:</b>`);
+    lines.push(``, `<b>Most targeted ports (24h):</b>`);
     for (const { port, count } of summary.topPorts.slice(0, 5)) {
       lines.push(`  :${port} \u2014 ${count} hits`);
     }

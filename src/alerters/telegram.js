@@ -191,9 +191,23 @@ async function drainQueue() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const errBody = await res.text();
-        logger.error('Telegram API error', { status: res.status, body: errBody.slice(0, 200) });
+      // Telegram returns HTTP 200 even on API errors, signalling failure via
+      // `{ ok: false, error_code, description }` in the body. Parse it and
+      // treat anything other than `ok: true` as a failure.
+      const rawBody = await res.text();
+      let parsed = null;
+      try {
+        parsed = JSON.parse(rawBody);
+      } catch {
+        // Non-JSON body (rare — e.g. proxy/5xx HTML); fall through to !res.ok path.
+      }
+      if (!res.ok || !parsed || parsed.ok !== true) {
+        logger.error('Telegram API error', {
+          status: res.status,
+          error_code: parsed?.error_code,
+          description: parsed?.description,
+          body: parsed ? undefined : rawBody.slice(0, 200),
+        });
       } else {
         success = true;
       }
