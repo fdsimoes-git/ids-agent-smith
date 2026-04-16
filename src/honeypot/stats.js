@@ -59,7 +59,12 @@ class HoneypotStats {
     // Enriched SSH fields (only present for SSH honeypot ports)
     if (event.banner) entry.banner = event.banner;
     if (event.clientVersion) entry.clientVersion = event.clientVersion;
-    if (event.credentials) entry.credentials = event.credentials;
+    if (event.credentials) {
+      entry.credentials = event.credentials.map(c => ({
+        ...c,
+        password: maskPassword(c.password),
+      }));
+    }
 
     // Push immediately so max-records trimming stays accurate during bursts
     this.connections.push(entry);
@@ -164,21 +169,25 @@ class HoneypotStats {
       }
     }
 
-    // Collect the most recent 20 credentials by iterating newest-first,
-    // avoiding a large intermediate array allocation.
+    // Count total credential attempts and collect the most recent 20
+    // by iterating newest-first, avoiding a large intermediate array.
+    let totalCredentialAttempts = 0;
     const maxRecentCreds = 20;
     const recentCredentials = [];
-    for (let i = sshConnections.length - 1; i >= 0 && recentCredentials.length < maxRecentCreds; i--) {
+    for (let i = sshConnections.length - 1; i >= 0; i--) {
       const conn = sshConnections[i];
       if (conn.credentials) {
-        for (let j = conn.credentials.length - 1; j >= 0 && recentCredentials.length < maxRecentCreds; j--) {
-          const cred = conn.credentials[j];
-          recentCredentials.push({
-            ip: conn.ip,
-            timestamp: conn.timestamp,
-            username: cred.username,
-            password: maskPassword(cred.password),
-          });
+        totalCredentialAttempts += conn.credentials.length;
+        if (recentCredentials.length < maxRecentCreds) {
+          for (let j = conn.credentials.length - 1; j >= 0 && recentCredentials.length < maxRecentCreds; j--) {
+            const cred = conn.credentials[j];
+            recentCredentials.push({
+              ip: conn.ip,
+              timestamp: conn.timestamp,
+              username: cred.username,
+              password: cred.password,
+            });
+          }
         }
       }
     }
@@ -204,6 +213,7 @@ class HoneypotStats {
       ssh: {
         totalSshConnections: sshConnections.length,
         uniqueClientVersions,
+        totalCredentialAttempts,
         topClientVersions,
         recentCredentials,
       },

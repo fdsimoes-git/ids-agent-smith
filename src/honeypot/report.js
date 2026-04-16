@@ -272,7 +272,7 @@ export function generateTelegramReport() {
       }
     }
     if (summary.ssh.recentCredentials.length > 0) {
-      lines.push(`  Credential attempts: ${summary.ssh.recentCredentials.length}`);
+      lines.push(`  Credential attempts: ${summary.ssh.totalCredentialAttempts}`);
     }
   }
 
@@ -414,7 +414,7 @@ ${hasTopCountryData ? `
 <div class="summary">
   <div class="card"><div class="num">${summary.ssh.totalSshConnections}</div><div class="label">SSH Connections</div></div>
   <div class="card"><div class="num">${summary.ssh.uniqueClientVersions}</div><div class="label">Unique Clients</div></div>
-  <div class="card"><div class="num">${summary.ssh.recentCredentials.length}</div><div class="label">Credential Attempts</div></div>
+  <div class="card"><div class="num">${summary.ssh.totalCredentialAttempts}</div><div class="label">Credential Attempts</div></div>
 </div>
 
 <h2>SSH Client Versions</h2>

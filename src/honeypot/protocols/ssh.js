@@ -6,6 +6,7 @@ import honeypotStats from '../stats.js';
 const SSH_BANNER = 'SSH-2.0-OpenSSH_8.9p1 Ubuntu-3\r\n';
 const MAX_CREDENTIALS_PER_CONNECTION = 20;
 const MAX_CREDENTIAL_LENGTH = 256;
+const MAX_CLIENT_VERSION_LENGTH = 255;
 
 /**
  * Handle an incoming connection on an SSH honeypot port.
@@ -63,7 +64,9 @@ export function handleSshConnection(socket, port, onThreat) {
         versionParsed = true;
         const line = versionBuffer.slice(0, nlIndex).trim();
         if (line.startsWith('SSH-')) {
-          clientVersion = line;
+          clientVersion = line
+            .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+            .slice(0, MAX_CLIENT_VERSION_LENGTH);
         }
       } else if (versionBuffer.length > 512) {
         // Give up if we haven't seen a newline within a reasonable size

@@ -64,12 +64,15 @@ const config = {
         .map(p => parseInt(p.trim(), 10))
         .filter(p => p > 0 && p < 65536)
     )];
-    const sshPorts = [...new Set(
-      (process.env.HONEYPOT_SSH_PORTS || '2222')
-        .split(',')
-        .map(p => parseInt(p.trim(), 10))
-        .filter(p => p > 0 && p < 65536)
-    )];
+    const rawSshPorts = process.env.HONEYPOT_SSH_PORTS;
+    const sshPorts = rawSshPorts !== undefined
+      ? [...new Set(
+        rawSshPorts
+          .split(',')
+          .map(p => parseInt(p.trim(), 10))
+          .filter(p => p > 0 && p < 65536)
+      )]
+      : (ports.includes(2222) ? [2222] : []);
     if (enabled && ports.length === 0) {
       throw new Error('HONEYPOT_ENABLED=true but HONEYPOT_PORTS has no valid ports');
     }
@@ -92,14 +95,15 @@ const config = {
       ports.length = 0;
       ports.push(...filtered);
     }
-    const invalidSshPorts = sshPorts.filter(p => !ports.includes(p));
-    if (invalidSshPorts.length > 0) {
-      const msg = `HONEYPOT_SSH_PORTS contains ports not in HONEYPOT_PORTS: ${invalidSshPorts.join(', ')}`;
-      if (enabled) throw new Error(msg);
-      // eslint-disable-next-line no-console
-      console.warn(`Warning: ${msg}`);
-    }
     const validSshPorts = sshPorts.filter(p => ports.includes(p));
+    const droppedSshPorts = sshPorts.filter(p => !ports.includes(p));
+    if (droppedSshPorts.length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `Warning: HONEYPOT_SSH_PORTS contains ports not in HONEYPOT_PORTS (${droppedSshPorts.join(', ')}); ` +
+        `using intersection: [${validSshPorts.join(', ')}]`
+      );
+    }
     return {
       enabled,
       ports,
