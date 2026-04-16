@@ -82,6 +82,9 @@ sudo nano /etc/systemd/system/idps-agent.service
 | `HONEYPOT_HTTP_PORT` | No | HTTP honeypot listen port (default: `8080`) |
 | `GEOIP_ENABLED` | No | `false` to disable geo-IP lookups (default: `true`) |
 | `GEOIP_API_URL` | No | Base URL for ip-api.com (default: `http://ip-api.com`). The free tier only supports HTTP; set to `https://pro.ip-api.com` if you have a paid plan |
+| `HONEYPOT_DAILY_DIGEST` | No | `true` to enable daily honeypot activity digest via Telegram (default: `false`) |
+| `HONEYPOT_DIGEST_TIME` | No | Time to send the daily digest in `HH:MM` format, e.g. `09:30` (default: `08:00`). Takes precedence over `HONEYPOT_DIGEST_HOUR` when both are set |
+| `HONEYPOT_DIGEST_HOUR` | No | Hour (0-23) to send the daily digest (default: `8`). Ignored if `HONEYPOT_DIGEST_TIME` is set |
 
 ## Nginx Log Format
 
@@ -192,6 +195,10 @@ An optional integrated honeypot that listens on configurable decoy ports to dete
 HONEYPOT_ENABLED=true
 HONEYPOT_PORTS=2222,8080,3389,5900  # optional, these are the defaults
 ```
+
+### Daily Digest
+
+When enabled (`HONEYPOT_DAILY_DIGEST=true`), a daily Telegram summary is sent at the configured time including: total hits (24h), unique attacker IPs, most targeted ports, most active hour, and top credential attempts. A top countries section is planned pending geo-IP integration (see #18).
 
 ### Data Visualization
 

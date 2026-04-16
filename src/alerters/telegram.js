@@ -125,6 +125,11 @@ export async function sendAgentSmithGif(ip) {
   if (!draining) drainQueue();
 }
 
+// Fire-and-forget: queues the message and returns immediately without awaiting
+// queue drain / Telegram I/O. Returns a resolved Promise so existing
+// `await sendMessage(...).catch(...)` call sites remain valid. Callers that
+// need to confirm delivery (e.g. the daily digest) must use
+// sendMessageAwaitable() instead.
 export async function sendMessage(text, replyMarkup) {
   if (!config.telegram.botToken || !config.telegram.chatId) {
     logger.debug('Telegram not configured, message dropped');
@@ -135,10 +140,27 @@ export async function sendMessage(text, replyMarkup) {
   if (!draining) drainQueue();
 }
 
+// Awaitable variant for callers that must confirm delivery (e.g. daily digest
+// marking lastSentDate only on success). Resolves to true if the Telegram API
+// accepted the message, false otherwise. Regular callers should use
+// sendMessage so they don't block on queue backoff.
+export function sendMessageAwaitable(text, replyMarkup) {
+  if (!config.telegram.botToken || !config.telegram.chatId) {
+    logger.debug('Telegram not configured, message dropped');
+    return Promise.resolve(false);
+  }
+
+  return new Promise(resolve => {
+    queue.push({ type: 'message', text, replyMarkup, resolve });
+    if (!draining) drainQueue();
+  });
+}
+
 async function drainQueue() {
   draining = true;
   while (queue.length > 0) {
     const item = queue.shift();
+    let success = false;
     try {
       let endpoint, body;
       if (item.type === 'animation') {
@@ -160,6 +182,7 @@ async function drainQueue() {
         if (item.replyMarkup) body.reply_markup = item.replyMarkup;
       } else {
         logger.error('Unknown Telegram queue item type', { type: item.type });
+        if (item.resolve) item.resolve(false);
         continue;
       }
 
@@ -168,13 +191,30 @@ async function drainQueue() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const errBody = await res.text();
-        logger.error('Telegram API error', { status: res.status, body: errBody.slice(0, 200) });
+      // Telegram returns HTTP 200 even on API errors, signalling failure via
+      // `{ ok: false, error_code, description }` in the body. Parse it and
+      // treat anything other than `ok: true` as a failure.
+      const rawBody = await res.text();
+      let parsed = null;
+      try {
+        parsed = JSON.parse(rawBody);
+      } catch {
+        // Non-JSON body (rare — e.g. proxy/5xx HTML); fall through to !res.ok path.
+      }
+      if (!res.ok || !parsed || parsed.ok !== true) {
+        logger.error('Telegram API error', {
+          status: res.status,
+          error_code: parsed?.error_code,
+          description: parsed?.description,
+          body: parsed ? undefined : rawBody.slice(0, 200),
+        });
+      } else {
+        success = true;
       }
     } catch (err) {
       logger.error('Telegram send failed', { error: err.message });
     }
+    if (item.resolve) item.resolve(success);
     // Telegram rate limit: ~30 msgs/sec, but be conservative
     if (queue.length > 0) await new Promise(r => setTimeout(r, 1000));
   }
