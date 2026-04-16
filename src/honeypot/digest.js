@@ -1,10 +1,11 @@
 import config from '../../config.js';
 import logger from '../utils/logger.js';
-import { sendMessage } from '../alerters/telegram.js';
+import { sendMessageAwaitable } from '../alerters/telegram.js';
 import honeypotStats from './stats.js';
 
 let timer = null;
 let lastSentDate = null;
+let running = false;
 
 function msUntilNext(hour, minute) {
   const now = new Date();
@@ -15,10 +16,15 @@ function msUntilNext(hour, minute) {
 }
 
 function scheduleNext() {
+  if (!running) return;
+
   const { hour, minute } = config.honeypot.dailyDigest;
   const delay = msUntilNext(hour, minute);
 
   timer = setTimeout(async () => {
+    // generateAndSend awaits Telegram I/O; stopDigest() may flip `running` off
+    // mid-flight, so re-check before rescheduling to guarantee the chain stops.
+    if (!running) return;
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     if (lastSentDate !== today) {
@@ -31,6 +37,7 @@ function scheduleNext() {
         logger.error('Honeypot daily digest failed', { error: err.message });
       }
     }
+    if (!running) return;
     scheduleNext();
   }, delay);
 }
@@ -44,6 +51,7 @@ export function startDigest() {
     timer = null;
   }
 
+  running = true;
   scheduleNext();
 
   const { hour, minute } = config.honeypot.dailyDigest;
@@ -51,6 +59,7 @@ export function startDigest() {
 }
 
 export function stopDigest() {
+  running = false;
   if (timer) {
     clearTimeout(timer);
     timer = null;
@@ -61,7 +70,7 @@ async function generateAndSend() {
   const summary = honeypotStats.getSummary();
 
   if (summary.connectionsLast24h === 0) {
-    const sent = await sendMessage(
+    const sent = await sendMessageAwaitable(
       `\u{1F36F} <b>Honeypot Daily Digest</b>\n\n` +
       `No honeypot activity in the last 24 hours.`
     );
@@ -113,7 +122,7 @@ async function generateAndSend() {
     }
   }
 
-  const sent = await sendMessage(lines.join('\n'));
+  const sent = await sendMessageAwaitable(lines.join('\n'));
   if (sent) logger.info('Honeypot daily digest sent');
   return sent;
 }

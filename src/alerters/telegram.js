@@ -125,17 +125,35 @@ export async function sendAgentSmithGif(ip) {
   if (!draining) drainQueue();
 }
 
+// Fire-and-forget: queues the message and returns immediately without awaiting
+// queue drain / Telegram I/O. Returns a resolved Promise so existing
+// `await sendMessage(...).catch(...)` call sites remain valid. Callers that
+// need to confirm delivery (e.g. the daily digest) must use
+// sendMessageAwaitable() instead.
 export async function sendMessage(text, replyMarkup) {
   if (!config.telegram.botToken || !config.telegram.chatId) {
     logger.debug('Telegram not configured, message dropped');
-    return false;
+    return;
   }
 
-  let resolve;
-  const promise = new Promise(r => { resolve = r; });
-  queue.push({ type: 'message', text, replyMarkup, resolve });
+  queue.push({ type: 'message', text, replyMarkup });
   if (!draining) drainQueue();
-  return promise;
+}
+
+// Awaitable variant for callers that must confirm delivery (e.g. daily digest
+// marking lastSentDate only on success). Resolves to true if the Telegram API
+// accepted the message, false otherwise. Regular callers should use
+// sendMessage so they don't block on queue backoff.
+export function sendMessageAwaitable(text, replyMarkup) {
+  if (!config.telegram.botToken || !config.telegram.chatId) {
+    logger.debug('Telegram not configured, message dropped');
+    return Promise.resolve(false);
+  }
+
+  return new Promise(resolve => {
+    queue.push({ type: 'message', text, replyMarkup, resolve });
+    if (!draining) drainQueue();
+  });
 }
 
 async function drainQueue() {
