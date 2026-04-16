@@ -337,7 +337,7 @@ export function generateHtmlReport() {
   <div class="card"><div class="num">${summary.totalConnections}</div><div class="label">Total Connections</div></div>
   <div class="card"><div class="num">${summary.connectionsLast24h}</div><div class="label">Last 24h</div></div>
   <div class="card"><div class="num">${summary.uniqueIps}</div><div class="label">Unique IPs (24h)</div></div>
-  <div class="card"><div class="num">${summary.topPorts.length}</div><div class="label">Ports Probed (24h)</div></div>
+  <div class="card"><div class="num">${summary.topPorts.length}</div><div class="label">Unique ports probed (24h)</div></div>
   <div class="card"><div class="num">${summary.uniqueCountries ?? 0}</div><div class="label">Countries (24h)</div></div>
 </div>
 

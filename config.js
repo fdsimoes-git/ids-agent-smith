@@ -104,19 +104,27 @@ const config = {
         // HONEYPOT_DIGEST_TIME takes precedence when both are set
         ...(() => {
           const timeStr = process.env.HONEYPOT_DIGEST_TIME;
-          if (timeStr) {
+          if (timeStr !== undefined && timeStr !== '') {
             const parts = timeStr.split(':');
             const h = parseInt(parts[0], 10);
             const m = parts.length > 1 ? parseInt(parts[1], 10) : 0;
-            if (!Number.isNaN(h) && h >= 0 && h <= 23 &&
-                !Number.isNaN(m) && m >= 0 && m <= 59) {
-              return { hour: h, minute: m };
+            if (Number.isNaN(h) || h < 0 || h > 23 ||
+                Number.isNaN(m) || m < 0 || m > 59) {
+              throw new Error(
+                `HONEYPOT_DIGEST_TIME=${timeStr} is invalid (must be HH:MM with hour 0-23 and minute 0-59)`
+              );
             }
+            return { hour: h, minute: m };
           }
           const hourStr = process.env.HONEYPOT_DIGEST_HOUR;
-          if (hourStr !== undefined) {
+          if (hourStr !== undefined && hourStr !== '') {
             const parsed = parseInt(hourStr, 10);
-            if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 23) return { hour: parsed, minute: 0 };
+            if (Number.isNaN(parsed) || parsed < 0 || parsed > 23) {
+              throw new Error(
+                `HONEYPOT_DIGEST_HOUR=${hourStr} is invalid (must be an integer 0-23)`
+              );
+            }
+            return { hour: parsed, minute: 0 };
           }
           return { hour: 8, minute: 0 };
         })(),
