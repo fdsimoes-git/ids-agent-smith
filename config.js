@@ -119,6 +119,8 @@ const config = {
       const parsed = parseInt(process.env.HONEYPOT_MAX_FILE_MB, 10);
       return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
     })();
+    const archiveEnabled = process.env.HONEYPOT_ARCHIVE_ENABLED !== 'false';
+    const archiveNdjson = process.env.HONEYPOT_ARCHIVE_NDJSON === 'true';
     return {
       enabled,
       ports,
@@ -130,6 +132,8 @@ const config = {
       retentionDays: 7,
       maxFileMb,
       maxArchives: 3,
+      archiveEnabled,
+      archiveNdjson,
       http: {
         enabled: httpEnabled,
         port: httpPort,

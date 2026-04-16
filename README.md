@@ -87,7 +87,13 @@ sudo nano /etc/systemd/system/idps-agent.service
 | `HONEYPOT_DIGEST_TIME` | No | Time to send the daily digest in `HH:MM` format, e.g. `09:30` (default: `08:00`). Takes precedence over `HONEYPOT_DIGEST_HOUR` when both are set |
 | `HONEYPOT_DIGEST_HOUR` | No | Hour (0-23) to send the daily digest (default: `8`). Ignored if `HONEYPOT_DIGEST_TIME` is set |
 | `HONEYPOT_MAX_FILE_MB` | No | Max size of `honeypot.json` before it is gzip-archived and rotated (default: `50`). Keeps the 3 most recent archives |
+| `HONEYPOT_ARCHIVE_ENABLED` | No | `false` to disable the gzip archive/rotate step (default: `true`). When disabled, `honeypot.json` is not rotated even if it exceeds `HONEYPOT_MAX_FILE_MB` |
+| `HONEYPOT_ARCHIVE_NDJSON` | No | `true` to also write a compressed NDJSON export (`honeypot.json.<ts>.ndjson.gz`) alongside the `.gz` snapshot (default: `false`) |
 | `MEMORY_ALERT_MB` | No | RSS threshold (MB) above which a Telegram alert is sent (throttled to once/hour, default: `256`) |
+
+## Journal Disk Limits
+
+`setup.sh` installs a journald drop-in at `/etc/systemd/journald.conf.d/idps-agent.conf` (from `journald-idps-agent.conf`) that caps total journal disk usage with `SystemMaxUse=100M` and `SystemKeepFree=50M`. These are journald settings — they are **not** valid inside a service unit, so the idps-agent service file does not contain them. To change the limits, edit the drop-in and run `sudo systemctl restart systemd-journald`.
 
 ## Nginx Log Format
 

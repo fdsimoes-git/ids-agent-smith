@@ -14,6 +14,8 @@ function hashPassword(password) {
   return createHash('sha256').update(password).digest('hex').slice(0, 16);
 }
 
+const ROTATE_COOLDOWN_MS = 60 * 60 * 1000;
+
 class HoneypotStats {
   constructor() {
     this.connections = [];
@@ -21,6 +23,7 @@ class HoneypotStats {
     this.saveTimer = null;
     this.isSaving = false;
     this.savePromise = null;
+    this.lastRotateMs = 0;
   }
 
   async load() {
@@ -258,6 +261,9 @@ class HoneypotStats {
   }
 
   async rotateIfNeeded() {
+    if (!config.honeypot.archiveEnabled) return;
+    if (Date.now() - this.lastRotateMs < ROTATE_COOLDOWN_MS) return;
+
     const dataPath = config.honeypot.dataPath;
     const limitBytes = config.honeypot.maxFileMb * 1024 * 1024;
     let size;
@@ -281,15 +287,40 @@ class HoneypotStats {
         createGzip(),
         createWriteStream(archivePath)
       );
-      await unlink(dataPath);
-      this.connections = [];
-      logger.info(`Honeypot stats rotated: archived ${size} bytes to ${archivePath}`);
+      logger.info(`Honeypot stats archived: ${size} bytes to ${archivePath}`);
     } catch (err) {
-      logger.error('Failed to rotate honeypot stats', { error: err.message });
+      logger.error('Failed to archive honeypot stats', { error: err.message });
       return;
     }
 
+    if (config.honeypot.archiveNdjson) {
+      const ndjsonPath = join(dir, `${base}.${timestamp}.ndjson.gz`);
+      try {
+        await this.writeNdjsonArchive(ndjsonPath);
+        logger.info(`Honeypot stats NDJSON export: ${ndjsonPath}`);
+      } catch (err) {
+        logger.error('Failed to write NDJSON archive', { error: err.message });
+      }
+    }
+
+    // Keep in-memory connections intact. The next save() rewrites the file
+    // with the bounded current state (maxRecords + retentionDays), which
+    // prunes oldest records from disk without wiping runtime stats.
+    this.lastRotateMs = Date.now();
     await this.pruneArchives();
+  }
+
+  async writeNdjsonArchive(ndjsonPath) {
+    const gzip = createGzip();
+    const out = createWriteStream(ndjsonPath);
+    const done = pipeline(gzip, out);
+    for (const conn of this.connections) {
+      if (!gzip.write(JSON.stringify(conn) + '\n')) {
+        await new Promise(resolve => gzip.once('drain', resolve));
+      }
+    }
+    gzip.end();
+    await done;
   }
 
   async pruneArchives() {

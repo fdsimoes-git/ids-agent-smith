@@ -91,6 +91,18 @@ fi
 echo "[+] Granting systemd journal access"
 usermod -aG systemd-journal "$USER" 2>/dev/null || true
 
+# 7b. Install journald drop-in to cap journal disk usage
+JOURNALD_DROPIN_DIR="/etc/systemd/journald.conf.d"
+JOURNALD_DROPIN="$JOURNALD_DROPIN_DIR/idps-agent.conf"
+if [ -f "$SCRIPT_DIR/journald-idps-agent.conf" ]; then
+  echo "[+] Installing journald drop-in: $JOURNALD_DROPIN"
+  mkdir -p "$JOURNALD_DROPIN_DIR"
+  cp "$SCRIPT_DIR/journald-idps-agent.conf" "$JOURNALD_DROPIN"
+  chmod 644 "$JOURNALD_DROPIN"
+  systemctl restart systemd-journald 2>/dev/null || \
+    echo "  [!] Could not restart systemd-journald automatically — run 'sudo systemctl restart systemd-journald' to apply"
+fi
+
 # 8. Configure sudoers for autonomous actions (fail2ban + iptables)
 # Migration: remove old ids-agent sudoers file if it exists
 if [ -f /etc/sudoers.d/ids-agent ]; then

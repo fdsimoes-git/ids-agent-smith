@@ -42,9 +42,10 @@ ReadOnlyPaths=/var/log/auth.log
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=idps-agent
-# Cap journal disk usage to keep GCP e2-micro costs predictable
-SystemMaxUse=100M
-SystemKeepFree=50M
+# Journal disk caps are configured via the journald drop-in shipped at
+# journald-idps-agent.conf (installed by setup.sh to
+# /etc/systemd/journald.conf.d/idps-agent.conf). SystemMaxUse / SystemKeepFree
+# are not valid directives inside a service unit.
 
 [Install]
 WantedBy=multi-user.target

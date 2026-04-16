@@ -42,9 +42,7 @@ function checkMemoryUsage() {
   sendMessage(
     `\u26A0\uFE0F <b>IDPS Agent memory alert</b>\n` +
     `RSS: <b>${rssDisplay} MB</b> (threshold: ${config.memoryAlertMb} MB)`
-  ).catch(err => {
-    logger.error('Failed to send memory alert', { error: err.message });
-  });
+  );
 }
 
 // --- Threat handling pipeline ---
