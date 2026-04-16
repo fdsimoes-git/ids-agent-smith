@@ -19,12 +19,12 @@ export function startDigest() {
 
   timer = setInterval(() => {
     const now = new Date();
-    const today = now.toISOString().slice(0, 10);
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     if (now.getHours() === hour && now.getMinutes() === minute && lastSentDate !== today) {
       lastSentDate = today;
       generateAndSend().catch(err => {
         logger.error('Honeypot daily digest failed', { error: err.message });
-        lastSentDate = null; // allow retry on failure
+        lastSentDate = null; // reset so digest is retried at the next scheduled check
       });
     }
   }, 60_000);

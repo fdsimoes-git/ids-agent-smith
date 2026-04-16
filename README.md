@@ -196,6 +196,10 @@ HONEYPOT_ENABLED=true
 HONEYPOT_PORTS=2222,8080,3389,5900  # optional, these are the defaults
 ```
 
+### Daily Digest
+
+When enabled (`HONEYPOT_DAILY_DIGEST=true`), a daily Telegram summary is sent at the configured time including: total hits (24h), unique attacker IPs, most targeted ports, most active hour, and top credential attempts. A top countries section is planned pending geo-IP integration (see #18).
+
 ### Data Visualization
 
 - **HTML report**: `GET /honeypot/report` — full visual report with bar charts for top attacker IPs, most probed ports, hourly connection distribution, and recent payloads
