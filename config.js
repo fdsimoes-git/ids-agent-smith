@@ -92,10 +92,18 @@ const config = {
       ports.length = 0;
       ports.push(...filtered);
     }
+    const invalidSshPorts = sshPorts.filter(p => !ports.includes(p));
+    if (invalidSshPorts.length > 0) {
+      const msg = `HONEYPOT_SSH_PORTS contains ports not in HONEYPOT_PORTS: ${invalidSshPorts.join(', ')}`;
+      if (enabled) throw new Error(msg);
+      // eslint-disable-next-line no-console
+      console.warn(`Warning: ${msg}`);
+    }
+    const validSshPorts = sshPorts.filter(p => ports.includes(p));
     return {
       enabled,
       ports,
-      sshPorts,
+      sshPorts: validSshPorts,
       dataPath: process.env.HONEYPOT_DATA_PATH || '/var/log/idps-agent/honeypot.json',
       maxPayloadBytes: 1024,
       maxConnectionMs: 30_000,

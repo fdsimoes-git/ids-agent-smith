@@ -4,6 +4,8 @@ import { sanitizeIp } from '../../utils/sanitize.js';
 import honeypotStats from '../stats.js';
 
 const SSH_BANNER = 'SSH-2.0-OpenSSH_8.9p1 Ubuntu-3\r\n';
+const MAX_CREDENTIALS_PER_CONNECTION = 20;
+const MAX_CREDENTIAL_LENGTH = 256;
 
 /**
  * Handle an incoming connection on an SSH honeypot port.
@@ -19,7 +21,8 @@ export function handleSshConnection(socket, port, onThreat) {
 
   const timestamp = new Date().toISOString();
   let clientVersion = '';
-  let firstLine = true;
+  let versionParsed = false;
+  let versionBuffer = '';
   const payloadBuffers = [];
   let payloadBytes = 0;
   const credentials = [];
@@ -42,19 +45,28 @@ export function handleSshConnection(socket, port, onThreat) {
       payloadBytes += slice.length;
     }
 
-    // Capture the client's SSH version string (first line sent)
-    if (firstLine) {
-      firstLine = false;
-      const line = chunk.toString('utf8').split('\n')[0].trim();
-      if (line.startsWith('SSH-')) {
-        clientVersion = line;
+    // Buffer data until a newline is found before parsing SSH identification string
+    if (!versionParsed) {
+      versionBuffer += chunk.toString('utf8');
+      const nlIndex = versionBuffer.indexOf('\n');
+      if (nlIndex !== -1) {
+        versionParsed = true;
+        const line = versionBuffer.slice(0, nlIndex).trim();
+        if (line.startsWith('SSH-')) {
+          clientVersion = line;
+        }
+      } else if (versionBuffer.length > 512) {
+        // Give up if we haven't seen a newline within a reasonable size
+        versionParsed = true;
       }
     }
 
     // Attempt to extract credentials from raw data.
     // Real SSH clients encrypt auth, but many bots/scanners send plaintext
     // or use custom protocols that leak username/password strings.
-    extractCredentials(chunk, credentials);
+    if (credentials.length < MAX_CREDENTIALS_PER_CONNECTION) {
+      extractCredentials(chunk, credentials);
+    }
 
     if (payloadBytes >= config.honeypot.maxPayloadBytes) {
       socket.destroy();
@@ -111,11 +123,22 @@ export function handleSshConnection(socket, port, onThreat) {
 }
 
 /**
+ * Sanitize a credential string: strip non-printable characters and truncate.
+ */
+function sanitizeCredential(value) {
+  if (!value) return null;
+  const stripped = value.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+  return stripped.slice(0, MAX_CREDENTIAL_LENGTH) || null;
+}
+
+/**
  * Scan a raw data chunk for printable strings that look like credential attempts.
  * SSH bots sometimes send plaintext user/pass before or outside the encrypted channel.
  * We also look for common patterns in malformed/custom SSH implementations.
  */
 function extractCredentials(chunk, credentials) {
+  if (credentials.length >= MAX_CREDENTIALS_PER_CONNECTION) return;
+
   const text = chunk.toString('utf8');
 
   // Pattern: lines containing "user" or "pass" keywords (common in bot payloads)
@@ -123,8 +146,8 @@ function extractCredentials(chunk, credentials) {
   const passMatch = text.match(/(?:pass(?:word)?)\s*[=:]\s*(\S+)/i);
   if (userMatch || passMatch) {
     credentials.push({
-      username: userMatch?.[1] || null,
-      password: passMatch?.[1] || null,
+      username: sanitizeCredential(userMatch?.[1]),
+      password: sanitizeCredential(passMatch?.[1]),
     });
     return;
   }
@@ -134,14 +157,14 @@ function extractCredentials(chunk, credentials) {
   const printable = text.replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim();
   if (printable.length > 2 && !printable.startsWith('SSH-')) {
     // Check for null-separated user\0pass pattern (used by some bots)
-    const nullParts = chunk.toString('binary').split('\x00').filter(s => {
+    const nullParts = chunk.toString('latin1').split('\x00').filter(s => {
       const clean = s.replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim();
       return clean.length > 0 && clean.length < 64;
     });
     if (nullParts.length >= 2) {
       credentials.push({
-        username: nullParts[0].replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim(),
-        password: nullParts[1].replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim(),
+        username: sanitizeCredential(nullParts[0].replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim()),
+        password: sanitizeCredential(nullParts[1].replace(/[\x00-\x1F\x7F-\xFF]/g, '').trim()),
       });
     }
   }
