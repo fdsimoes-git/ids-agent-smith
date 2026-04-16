@@ -188,7 +188,9 @@ async function main() {
         logger.error('Honeypot threat handler error', { error: err.message });
       });
     }) || [];
-    startDigest();
+    if (honeypotPorts.length > 0) {
+      startDigest();
+    }
   }
 
   // HTTP honeypot (optional) — fake admin login pages

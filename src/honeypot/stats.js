@@ -96,7 +96,7 @@ class HoneypotStats {
     const ipGeo = Object.create(null);
     const isoAlpha2 = /^[A-Z]{2}$/;
 
-    for (const conn of this.connections) {
+    for (const conn of recent) {
       byIp[conn.ip] = (byIp[conn.ip] || 0) + 1;
       byPort[conn.port] = (byPort[conn.port] || 0) + 1;
 
@@ -113,9 +113,7 @@ class HoneypotStats {
         // Keep latest geo per IP for topIps enrichment
         ipGeo[conn.ip] = conn.geo;
       }
-    }
 
-    for (const conn of recent) {
       const hour = new Date(conn.timestamp).getHours();
       const key = String(hour).padStart(2, '0') + ':00';
       byHour[key] = (byHour[key] || 0) + 1;

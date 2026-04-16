@@ -8,6 +8,12 @@ let timer = null;
 export function startDigest() {
   if (!config.honeypot.dailyDigest.enabled) return;
 
+  // Guard against multiple calls — clear existing timer before setting new one
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+
   timer = setInterval(() => {
     const now = new Date();
     if (now.getHours() === config.honeypot.dailyDigest.hour && now.getMinutes() === 0) {
@@ -46,22 +52,7 @@ async function generateAndSend() {
     `<b>Unique attacker IPs:</b> ${summary.uniqueIps}`,
   ];
 
-  // Top 5 countries — only if geo data is present on connections
-  const countryCounts = {};
-  for (const conn of honeypotStats.getAll()) {
-    if (conn.country) {
-      countryCounts[conn.country] = (countryCounts[conn.country] || 0) + 1;
-    }
-  }
-  const topCountries = Object.entries(countryCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  if (topCountries.length > 0) {
-    lines.push(``, `<b>Top countries:</b>`);
-    for (const [country, count] of topCountries) {
-      lines.push(`  ${escapeHtml(country)} \u2014 ${count} hits`);
-    }
-  }
+  // TODO: Top countries section will be added after geo-IP data is available (see #18)
 
   // Most targeted ports
   if (summary.topPorts.length > 0) {
@@ -77,9 +68,11 @@ async function generateAndSend() {
     lines.push(``, `<b>Most active hour:</b> ${peak.hour} (${peak.count} connections)`);
   }
 
-  // Top 3 credential attempts — extract user/pass patterns from SSH-like payloads
+  // Top 3 credential attempts — extract user/pass patterns from SSH-like payloads (last 24h only)
+  const now24h = Date.now() - 86400_000;
   const credCounts = {};
   for (const conn of honeypotStats.getAll()) {
+    if (new Date(conn.timestamp).getTime() <= now24h) continue;
     if (!conn.payload) continue;
     const creds = extractCredentials(conn.payload);
     for (const cred of creds) {
