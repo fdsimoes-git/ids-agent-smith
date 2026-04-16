@@ -423,7 +423,7 @@ ${hasTopCountryData ? `
 <h2>SSH Honeypot</h2>
 <div class="summary">
   <div class="card"><div class="num">${summary.ssh.totalSshConnections}</div><div class="label">SSH Connections</div></div>
-  <div class="card"><div class="num">${summary.ssh.topClientVersions.length}</div><div class="label">Unique Clients</div></div>
+  <div class="card"><div class="num">${summary.ssh.uniqueClientVersions}</div><div class="label">Unique Clients</div></div>
   <div class="card"><div class="num">${summary.ssh.recentCredentials.length}</div><div class="label">Credential Attempts</div></div>
 </div>
 

@@ -4,6 +4,16 @@ import config from '../../config.js';
 import logger from '../utils/logger.js';
 import { lookupIp } from '../utils/geoip.js';
 
+/**
+ * Mask a password for display: show up to the first 2 characters followed by
+ * asterisks.  Passwords of 2 or fewer characters are shown in full.
+ */
+function maskPassword(password) {
+  if (!password || password === '—') return password || '?';
+  if (password.length <= 2) return password;
+  return password.slice(0, 2) + '*'.repeat(Math.min(password.length - 2, 6));
+}
+
 class HoneypotStats {
   constructor() {
     this.connections = [];
@@ -157,24 +167,37 @@ class HoneypotStats {
     // SSH-specific aggregations
     const sshConnections = this.connections.filter(c => c.banner || c.clientVersion);
     const clientVersions = {};
-    const allCredentials = [];
     for (const conn of sshConnections) {
       if (conn.clientVersion) {
         clientVersions[conn.clientVersion] = (clientVersions[conn.clientVersion] || 0) + 1;
       }
+    }
+
+    // Collect the most recent 20 credentials by iterating newest-first,
+    // avoiding a large intermediate array allocation.
+    const maxRecentCreds = 20;
+    const recentCredentials = [];
+    for (let i = sshConnections.length - 1; i >= 0 && recentCredentials.length < maxRecentCreds; i--) {
+      const conn = sshConnections[i];
       if (conn.credentials) {
-        for (const cred of conn.credentials) {
-          allCredentials.push({ ip: conn.ip, timestamp: conn.timestamp, ...cred });
+        for (let j = conn.credentials.length - 1; j >= 0 && recentCredentials.length < maxRecentCreds; j--) {
+          const cred = conn.credentials[j];
+          recentCredentials.push({
+            ip: conn.ip,
+            timestamp: conn.timestamp,
+            username: cred.username,
+            password: maskPassword(cred.password),
+          });
         }
       }
     }
+
+    const uniqueClientVersions = Object.keys(clientVersions).length;
 
     const topClientVersions = Object.entries(clientVersions)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([version, count]) => ({ version, count }));
-
-    const recentCredentials = allCredentials.slice(-20).reverse();
 
     return {
       totalConnections: this.connections.length,
@@ -189,6 +212,7 @@ class HoneypotStats {
       recentPayloads,
       ssh: {
         totalSshConnections: sshConnections.length,
+        uniqueClientVersions,
         topClientVersions,
         recentCredentials,
       },
