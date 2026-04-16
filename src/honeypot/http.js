@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import config from '../../config.js';
 import logger from '../utils/logger.js';
-import { sanitizeIp } from '../utils/sanitize.js';
+import { sanitizeIp, sanitizeLine } from '../utils/sanitize.js';
 import honeypotStats from './stats.js';
 
 let server = null;
@@ -331,7 +331,7 @@ function extractCredentials(body, type) {
   }
 
   return {
-    username: username ? String(username).slice(0, 256) : null,
+    username: username ? sanitizeLine(String(username)).slice(0, 256) : null,
     password: password ? String(password).slice(0, 256) : null,
   };
 }
@@ -344,8 +344,10 @@ export async function startHttpHoneypot(onThreat) {
   // When TCP honeypot is disabled, HTTP honeypot owns the stats lifecycle
   if (!config.honeypot.enabled) {
     await honeypotStats.load();
-    honeypotStats.startAutoSave();
   }
+
+  // startAutoSave is idempotent — always call it so stats are persisted
+  honeypotStats.startAutoSave();
 
   const port = config.honeypot.http.port;
 
@@ -356,8 +358,13 @@ export async function startHttpHoneypot(onThreat) {
       const remoteIp = sanitizeIp(
         req.socket.remoteAddress?.replace('::ffff:', '')
       );
+      if (!remoteIp) {
+        res.writeHead(400);
+        res.end();
+        return;
+      }
       const timestamp = new Date().toISOString();
-      const userAgent = req.headers['user-agent'] || '';
+      const userAgent = sanitizeLine(req.headers['user-agent'] || '');
       const method = req.method;
       const rawUrl = req.url || '/';
 

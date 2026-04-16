@@ -64,9 +64,10 @@ const config = {
       throw new Error('HONEYPOT_ENABLED=true but HONEYPOT_PORTS has no valid ports');
     }
     const httpEnabled = process.env.HONEYPOT_HTTP_ENABLED === 'true';
-    const httpPort = parseInt(process.env.HONEYPOT_HTTP_PORT, 10) || 8080;
-    if (httpEnabled && (httpPort < 1 || httpPort > 65535 || !Number.isInteger(httpPort))) {
-      throw new Error(`HONEYPOT_HTTP_ENABLED=true but HONEYPOT_HTTP_PORT=${process.env.HONEYPOT_HTTP_PORT} is invalid (must be 1-65535)`);
+    const rawHttpPort = process.env.HONEYPOT_HTTP_PORT;
+    const httpPort = rawHttpPort ? parseInt(rawHttpPort, 10) : 8080;
+    if (httpEnabled && (Number.isNaN(httpPort) || httpPort < 1 || httpPort > 65535 || !Number.isInteger(httpPort))) {
+      throw new Error(`HONEYPOT_HTTP_ENABLED=true but HONEYPOT_HTTP_PORT=${rawHttpPort} is invalid (must be 1-65535)`);
     }
     return {
       enabled,
